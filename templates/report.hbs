@@ -79,6 +79,44 @@
             margin-bottom: 20px;
         }
         
+        /* Risk score container */
+        .risk-container {
+            background-color: #fff3e0;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .risk-score {
+            font-size: 36px;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        
+        .risk-category {
+            text-align: center;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .risk-category-high {
+            color: #d32f2f;
+        }
+        
+        .risk-category-medium {
+            color: #f57c00;
+        }
+        
+        .risk-category-low {
+            color: #388e3c;
+        }
+        
+        .risk-factors {
+            font-size: 14px;
+            margin-top: 10px;
+        }
+        
         /* Field details grid */
         .info-grid {
             display: grid;
@@ -157,6 +195,25 @@
                 {{/if}}
             </div>
             
+            <!-- Risk score container -->
+            {{#if riskScore}}
+            <div class="risk-container section">
+                <h2 class="section-title">Field Risk Assessment</h2>
+                <div class="risk-score">{{riskScore.score}}/100</div>
+                <div class="risk-category {{#if (eq riskScore.category 'High')}}risk-category-high{{else if (eq riskScore.category 'Medium')}}risk-category-medium{{else}}risk-category-low{{/if}}">
+                    {{riskScore.category}} Risk
+                </div>
+                <div class="risk-factors">
+                    <strong>Risk factors:</strong>
+                    <ul>
+                        {{#each riskScore.factors}}
+                            <li>{{this}}</li>
+                        {{/each}}
+                    </ul>
+                </div>
+            </div>
+            {{/if}}
+            
             <!-- Weather section -->
             <div class="weather-container section">
                 <h2 class="section-title">Weather Conditions</h2>
@@ -200,7 +257,7 @@
                     
                     <div class="info-item">
                         <div class="info-label">Planting Date</div>
-                        <div class="info-value">{{field.planting_date}}</div>
+                        <div class="info-value">{{field.formatted_planting_date}}</div>
                     </div>
                     
                     <div class="info-item">
@@ -221,6 +278,26 @@
                     <div class="info-item">
                         <div class="info-label">Last Yield</div>
                         <div class="info-value">{{field.last_yield}} {{field.last_yield_unit}}</div>
+                    </div>
+                    
+                    <div class="info-item">
+                        <div class="info-label">Basal Fertilizer</div>
+                        <div class="info-value">{{field.basal_fertilizer}} ({{field.basal_fertilizer_amount}})</div>
+                    </div>
+                    
+                    <div class="info-item">
+                        <div class="info-label">Top Dressing</div>
+                        <div class="info-value">{{field.top_dressing}} ({{field.top_dressing_amount}})</div>
+                    </div>
+                    
+                    <div class="info-item">
+                        <div class="info-label">Backup Power</div>
+                        <div class="info-value">{{field.backup_power}}</div>
+                    </div>
+                    
+                    <div class="info-item">
+                        <div class="info-label">Fire Guard</div>
+                        <div class="info-value">{{field.fire_guard}}</div>
                     </div>
                 </div>
             </div>
