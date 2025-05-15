@@ -1,120 +1,245 @@
-
-
-  
-  
-  
-  
-
-
-  
-
-    
-
-      
-Yieldera Field Report
-
-    
-
-    
-    
-
-      
-
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yieldera Field Report</title>
+    <style>
+        /* Base styles */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            margin: 0;
+            padding: 0;
+            background-color: #f9f9f9;
+        }
         
-Field Information
-
+        /* Container */
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+        }
         
-
-            
-Farm Name
-
-            
-{{field.farm_name}}
-
-          
-
-            
-Farmer
-
-            
-{{field.farmer_name}}
-
-          
-
-            
-Crop Type
-
-            
-{{field.crop_type}}
-
-          
-
-            
-Variety
-
-            
-{{field.variety}}
-
-          
-
-            
-Field Size
-
-            
-{{field.field_size}} ha
-
-          
-
-            
-Planting Date
-
-            
-{{field.planting_date}}
-
-          
-
-            
-Growth Stage
-
-            
-{{field.growth_stage}}
-
-          
-
-            
-Soil Type
-
-            
-{{field.soil_type}}
-
-          
-
-      
-
-      
-      
-
+        /* Header */
+        .header {
+            background-color: #01282F;
+            color: #B6BF00;
+            padding: 20px;
+            text-align: center;
+        }
         
-Agronomic Analysis
-
-        {{{analysis}}}
-      
-
-      
-      
-This report was automatically generated based on your field data and current weather conditions. For more detailed advice, please consult with your local agronomist.
-
-
-      
-      View Field in Yieldera
-    
-
-    
-    
-
-      
-Yieldera Field Data App | Report generated on {{reportDate}}
-
-
-      
-This is an automated report. Please do not reply to this email.
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+        
+        .logo {
+            max-width: 150px;
+            margin-bottom: 10px;
+        }
+        
+        /* Content */
+        .content {
+            padding: 20px;
+        }
+        
+        /* Field summary */
+        .field-summary {
+            background-color: #f5f8fa;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 20px;
+            font-size: 15px;
+            line-height: 1.7;
+        }
+        
+        /* Section styling */
+        .section {
+            margin-bottom: 25px;
+        }
+        
+        .section-title {
+            color: #01282F;
+            font-size: 18px;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 8px;
+            margin-bottom: 15px;
+        }
+        
+        /* Weather container */
+        .weather-container {
+            background-color: #f0f6ff;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        
+        /* Field details grid */
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        
+        .info-item {
+            margin-bottom: 8px;
+        }
+        
+        .info-label {
+            font-weight: bold;
+            color: #555;
+            font-size: 13px;
+        }
+        
+        .info-value {
+            font-size: 15px;
+        }
+        
+        /* Analysis styles */
+        .analysis {
+            background-color: #fffef4;
+            border-left: 4px solid #B6BF00;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        
+        /* Button styles */
+        .btn {
+            display: inline-block;
+            background-color: #B6BF00;
+            color: #01282F;
+            text-decoration: none;
+            padding: 10px 16px;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-top: 10px;
+            text-align: center;
+        }
+        
+        /* Footer */
+        .footer {
+            background-color: #f5f5f5;
+            padding: 15px;
+            text-align: center;
+            font-size: 12px;
+            color: #666;
+        }
+        
+        /* Mobile responsiveness */
+        @media only screen and (max-width: 600px) {
+            .info-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            {{#if logoUrl}}
+            <img src="cid:yieldera-logo" alt="Yieldera Logo" class="logo">
+            {{/if}}
+            <h1>Yieldera Field Report</h1>
+        </div>
+        
+        <div class="content">
+            <!-- Natural language field summary -->
+            <div class="field-summary">
+                {{#if fieldSummary}}
+                    <p>{{{fieldSummary}}}</p>
+                {{else}}
+                    <p>This report provides analysis and recommendations for {{field.farm_name}} field, growing {{field.crop_type}}{{#if field.variety}} (variety: {{field.variety}}){{/if}} on {{field.field_size}} hectares.</p>
+                {{/if}}
+            </div>
+            
+            <!-- Weather section -->
+            <div class="weather-container section">
+                <h2 class="section-title">Weather Conditions</h2>
+                <div>
+                    {{#if weatherSummary}}
+                        <p>{{{weatherSummary}}}</p>
+                    {{else}}
+                        <p>Weather data analysis is included in the recommendations below.</p>
+                    {{/if}}
+                </div>
+            </div>
+            
+            <!-- Field details section -->
+            <div class="section">
+                <h2 class="section-title">Field Details</h2>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <div class="info-label">Farm Name</div>
+                        <div class="info-value">{{field.farm_name}}</div>
+                    </div>
+                    
+                    <div class="info-item">
+                        <div class="info-label">Farmer</div>
+                        <div class="info-value">{{field.farmer_name}}</div>
+                    </div>
+                    
+                    <div class="info-item">
+                        <div class="info-label">Crop Type</div>
+                        <div class="info-value">{{field.crop_type}}</div>
+                    </div>
+                    
+                    <div class="info-item">
+                        <div class="info-label">Variety</div>
+                        <div class="info-value">{{field.variety}}</div>
+                    </div>
+                    
+                    <div class="info-item">
+                        <div class="info-label">Field Size</div>
+                        <div class="info-value">{{field.field_size}} ha</div>
+                    </div>
+                    
+                    <div class="info-item">
+                        <div class="info-label">Planting Date</div>
+                        <div class="info-value">{{field.planting_date}}</div>
+                    </div>
+                    
+                    <div class="info-item">
+                        <div class="info-label">Current Growth Stage</div>
+                        <div class="info-value">{{field.growth_stage}}</div>
+                    </div>
+                    
+                    <div class="info-item">
+                        <div class="info-label">Soil Type</div>
+                        <div class="info-value">{{field.soil_type}}</div>
+                    </div>
+                    
+                    <div class="info-item">
+                        <div class="info-label">Location</div>
+                        <div class="info-value">{{locationName}}{{#unless locationName}}GPS: {{field.latitude}}, {{field.longitude}}{{/unless}}</div>
+                    </div>
+                    
+                    <div class="info-item">
+                        <div class="info-label">Last Yield</div>
+                        <div class="info-value">{{field.last_yield}} {{field.last_yield_unit}}</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Agronomic Analysis -->
+            <div class="analysis section">
+                <h2 class="section-title">Agronomic Analysis & Recommendations</h2>
+                <div>{{{analysis}}}</div>
+            </div>
+            
+            <p>This report was automatically generated based on your field data and current weather conditions. For more detailed advice, please consult with your local agronomist.</p>
+            
+            <a href="https://yieldera.co.zw" class="btn">View Field in Yieldera</a>
+        </div>
+        
+        <div class="footer">
+            <p>Yieldera Field Data App | Report generated on {{reportDate}}</p>
+            <p>This is an automated report. Please do not reply to this email.</p>
+        </div>
+    </div>
+</body>
+</html>
