@@ -15,6 +15,11 @@ marked.use(
   gfmHeadingId()
 );
 
+// Register Handlebars helpers
+Handlebars.registerHelper('eq', function(a, b) {
+  return a === b;
+});
+
 /**
  * Generate and send a report for a field
  */
@@ -65,6 +70,18 @@ async function generateAndSendReport(fieldId) {
       formattedForecastEndDate
     );
     
+    // Format planting date for display
+    if (fieldData.planting_date) {
+      try {
+        const date = new Date(fieldData.planting_date);
+        const options = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' };
+        fieldData.formatted_planting_date = date.toLocaleDateString('en-GB', options);
+      } catch (error) {
+        console.log("Error formatting planting date:", error.message);
+        fieldData.formatted_planting_date = fieldData.planting_date;
+      }
+    }
+    
     // Analyze data with AI
     const aiAnalysis = await aiService.analyzeWithAI(fieldData, weatherData, forecastData);
     
@@ -85,7 +102,8 @@ async function generateAndSendReport(fieldId) {
       appUrl: 'https://yieldera.co.zw',
       fieldSummary: aiAnalysis.fieldSummary || '',
       weatherSummary: aiAnalysis.weatherSummary || '',
-      locationName: aiAnalysis.locationName || ''
+      locationName: aiAnalysis.locationName || '',
+      riskScore: aiAnalysis.riskScore || null
     };
     
     // Send email report (without PDF)
