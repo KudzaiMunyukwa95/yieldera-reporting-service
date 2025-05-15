@@ -11,8 +11,8 @@ let transporter;
 function createTransporter() {
   // Default values as fallback
   const host = process.env.EMAIL_HOST || 'smtp.yieldera.co.zw';
-  const port = parseInt(process.env.EMAIL_PORT || '587');
-  const secure = process.env.EMAIL_SECURE === 'true';
+  const port = parseInt(process.env.EMAIL_PORT || '465');
+  const secure = process.env.EMAIL_SECURE === 'true' || port === 465;
   const user = process.env.EMAIL_USER || 'reports@yieldera.co.zw';
   const pass = process.env.EMAIL_PASSWORD;
   
@@ -22,16 +22,20 @@ function createTransporter() {
     return null;
   }
   
-  // Create the transporter with extended timeout
+  // Create the transporter with extended timeout and SSL certificate bypass
   return nodemailer.createTransport({
     host: host,
     port: port,
-    secure: secure,
+    secure: secure, // true for 465, false for other ports
     auth: {
       user: user,
       pass: pass
     },
-    // Add connection timeout settings
+    // Add SSL certificate bypass and extended timeouts
+    tls: {
+      // Do not fail on invalid certs
+      rejectUnauthorized: false
+    },
     connectionTimeout: 60000, // 60 seconds (default is 10 seconds)
     greetingTimeout: 30000,   // 30 seconds (default is 10 seconds)
     socketTimeout: 60000,     // 60 seconds
