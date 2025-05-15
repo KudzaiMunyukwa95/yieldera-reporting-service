@@ -1,156 +1,333 @@
 const axios = require('axios');
 require('dotenv').config();
 
-// Initialize Hugging Face client if API key is available
-let huggingFaceApiKey = process.env.HUGGINGFACE_API_KEY;
+// OpenAI API key should be added to Render environment
+const openaiApiKey = process.env.OPENAI_API_KEY;
 
 /**
- * Analyzes field data with AI
+ * Analyzes field data and weather data to generate agronomic report
  */
-async function analyzeWithAI(fieldData, weatherData) {
-  // Try multiple AI approaches in sequence
+async function analyzeWithAI(fieldData, weatherData, forecastData) {
   try {
-    // First attempt: Try Hugging Face Mistral model
-    if (huggingFaceApiKey) {
+    // Try OpenAI first
+    if (openaiApiKey) {
+      console.log("Analyzing field data with OpenAI...");
       try {
-        console.log("Attempting analysis with Hugging Face Mistral...");
-        return await analyzeMistral(fieldData, weatherData);
+        const openAiReport = await analyzeWithOpenAI(fieldData, weatherData, forecastData);
+        return openAiReport;
       } catch (error) {
-        console.log("Mistral analysis failed, trying alternative model...");
-        // If Mistral fails, try another model
-        try {
-          return await analyzeAlternativeModel(fieldData, weatherData);
-        } catch (alternativeError) {
-          console.log("Alternative model failed, falling back to rule-based...");
-          throw new Error("AI models unavailable");
-        }
+        console.error("OpenAI analysis failed:", error.message);
+        console.log("Falling back to rule-based analysis...");
       }
     } else {
-      console.log("No Hugging Face API key found, using rule-based analysis");
-      return alternativeAnalysis(fieldData, weatherData);
+      console.log("No OpenAI API key found. Using rule-based analysis.");
     }
+    
+    // Fallback to rule-based analysis
+    return alternativeAnalysis(fieldData, weatherData);
   } catch (error) {
-    console.log("All AI approaches failed, using rule-based analysis");
+    console.error("AI analysis error:", error);
     return alternativeAnalysis(fieldData, weatherData);
   }
 }
 
 /**
- * Analyze using Mistral model
+ * Analyze field data using OpenAI
  */
-async function analyzeMistral(fieldData, weatherData) {
-  const prompt = generatePrompt(fieldData, weatherData);
+async function analyzeWithOpenAI(fieldData, weatherData, forecastData) {
+  // Generate prompt for OpenAI
+  const prompt = generateOpenAIPrompt(fieldData, weatherData, forecastData);
   
-  // Format prompt for Mistral model
-  const formattedPrompt = `<s>[INST] You are an expert agricultural analyst with deep knowledge of farming in Zimbabwe. Provide practical, actionable advice for farmers based on the following field and weather data:
-
-${prompt}
-
-Please provide:
-1. A brief analysis of the current field conditions
-2. Specific recommendations for managing this crop at its current stage
-3. Potential risks based on the weather and field conditions
-4. Opportunities for optimizing yield and quality
-
-Focus on practical, actionable advice specific to farming in Zimbabwe. [/INST]</s>`;
+  // Log the prompt for debugging (remove in production)
+  // console.log("OpenAI Prompt:", prompt);
   
   const response = await axios.post(
-    "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2",
+    "https://api.openai.com/v1/chat/completions",
     {
-      inputs: formattedPrompt,
-      parameters: {
-        max_new_tokens: 1024,
-        temperature: 0.7,
-        return_full_text: false
-      }
+      model: "gpt-3.5-turbo",
+      messages: [
+        {
+          role: "system",
+          content: "You are an expert agricultural analyst specializing in Zimbabwe farming practices. Your task is to generate a detailed agronomic report with practical, actionable recommendations based on field data and weather conditions."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      temperature: 0.7,
+      max_tokens: 1500
     },
     {
       headers: {
-        "Authorization": `Bearer ${huggingFaceApiKey}`,
+        "Authorization": `Bearer ${openaiApiKey}`,
         "Content-Type": "application/json"
       }
     }
   );
 
-  // Extract the generated text
-  let analysis = '';
-  if (response.data && Array.isArray(response.data)) {
-    analysis = response.data[0].generated_text;
-  } else if (response.data && response.data.generated_text) {
-    analysis = response.data.generated_text;
-  } else {
-    throw new Error('Unexpected response format from Hugging Face API');
-  }
-
-  // Format the analysis into Markdown sections if it's not already
-  if (!analysis.includes('#') && !analysis.includes('###')) {
-    analysis = formatAnalysisToMarkdown(analysis);
+  // Extract the response content
+  const analysis = response.data.choices[0].message.content.trim();
+  
+  // Format the analysis as Markdown if not already
+  let formattedAnalysis = analysis;
+  if (!analysis.includes('#')) {
+    formattedAnalysis = formatAnalysisToMarkdown(analysis);
   }
 
   return {
     success: true,
-    analysis: analysis,
-    source: "huggingface-mistral"
+    analysis: formattedAnalysis,
+    source: "openai"
   };
 }
 
 /**
- * Analyze using an alternative model (different endpoint)
+ * Generate detailed prompt for OpenAI
  */
-async function analyzeAlternativeModel(fieldData, weatherData) {
-  const prompt = generatePrompt(fieldData, weatherData);
+function generateOpenAIPrompt(fieldData, weatherData, forecastData) {
+  // Determine Zimbabwe's natural farming region based on coordinates
+  const farmingRegion = determineZimbabweFarmingRegion(fieldData.latitude, fieldData.longitude);
   
-  // Try a different model - Llama 2 is more widely available
-  const formattedPrompt = `<s>[INST] You are an agricultural expert specializing in farming in Zimbabwe. 
-Based on the following field and weather data, provide useful advice for the farmer:
-
-${prompt}
-
-Include: 
-- Current field condition analysis
-- Crop management recommendations
-- Potential risks
-- Yield optimization tips
-[/INST]</s>`;
-
-  const response = await axios.post(
-    "https://api-inference.huggingface.co/models/meta-llama/Llama-2-7b-chat-hf",
-    {
-      inputs: formattedPrompt,
-      parameters: {
-        max_new_tokens: 1024,
-        temperature: 0.7,
-        return_full_text: false
-      }
-    },
-    {
-      headers: {
-        "Authorization": `Bearer ${huggingFaceApiKey}`,
-        "Content-Type": "application/json"
-      }
+  // Calculate days since planting
+  let daysSincePlanting = "Unknown";
+  let growthStageInfo = "Unknown growth stage";
+  
+  if (fieldData.planting_date) {
+    try {
+      const plantingDate = new Date(fieldData.planting_date);
+      const currentDate = new Date();
+      const diffTime = Math.abs(currentDate - plantingDate);
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      daysSincePlanting = diffDays;
+      
+      // Add growth stage information based on crop type and days since planting
+      growthStageInfo = getCropGrowthStageInfo(fieldData.crop_type, diffDays, fieldData.growth_stage);
+    } catch (error) {
+      console.log("Error calculating days since planting:", error.message);
     }
-  );
-
-  // Extract the generated text
-  let analysis = '';
-  if (response.data && Array.isArray(response.data)) {
-    analysis = response.data[0].generated_text;
-  } else if (response.data && response.data.generated_text) {
-    analysis = response.data.generated_text;
-  } else {
-    throw new Error('Unexpected response format from Hugging Face API');
   }
-
-  // Format the analysis into Markdown sections
-  if (!analysis.includes('#') && !analysis.includes('###')) {
-    analysis = formatAnalysisToMarkdown(analysis);
+  
+  // Format weather summary
+  let weatherSummary = "Weather data unavailable.";
+  let weatherForecast = "Forecast unavailable.";
+  
+  if (weatherData && weatherData.daily) {
+    try {
+      const temps = weatherData.daily.temperature_2m_max;
+      const avgMaxTemp = average(temps).toFixed(1);
+      const avgMinTemp = average(weatherData.daily.temperature_2m_min).toFixed(1);
+      const totalRain = sum(weatherData.daily.precipitation_sum).toFixed(1);
+      
+      weatherSummary = `Last 30 days: Avg max temp: ${avgMaxTemp}°C, Avg min temp: ${avgMinTemp}°C, Total rainfall: ${totalRain}mm.`;
+      
+      // Check for extreme conditions
+      if (avgMaxTemp > 32) {
+        weatherSummary += " Temperatures have been unusually high.";
+      } else if (avgMaxTemp < 15) {
+        weatherSummary += " Temperatures have been unusually low.";
+      }
+      
+      if (totalRain < 10) {
+        weatherSummary += " Rainfall has been significantly below normal.";
+      } else if (totalRain > 150) {
+        weatherSummary += " Rainfall has been significantly above normal.";
+      }
+    } catch (error) {
+      console.log("Error processing historical weather:", error.message);
+    }
   }
+  
+  if (forecastData && forecastData.daily) {
+    try {
+      const forecastMaxTemp = average(forecastData.daily.temperature_2m_max).toFixed(1);
+      const forecastMinTemp = average(forecastData.daily.temperature_2m_min).toFixed(1);
+      const forecastRain = sum(forecastData.daily.precipitation_sum).toFixed(1);
+      
+      weatherForecast = `Next 7 days: Expected max temp: ${forecastMaxTemp}°C, Expected min temp: ${forecastMinTemp}°C, Expected rainfall: ${forecastRain}mm.`;
+    } catch (error) {
+      console.log("Error processing forecast weather:", error.message);
+    }
+  }
+  
+  // Get field health assessment
+  const fieldHealth = assessFieldHealth(fieldData);
+  
+  return `
+Please generate a detailed agricultural report for a farmer in Zimbabwe. The report should include a weather analysis, specific recommendations, potential risks, and opportunities for optimization. Format the output with clear Markdown headings (##, ###) for each section.
 
-  return {
-    success: true,
-    analysis: analysis,
-    source: "huggingface-llama"
-  };
+## Field Information:
+- Crop Type: ${fieldData.crop_type || 'Not specified'}
+- Variety: ${fieldData.variety || 'Not specified'}
+- Field Size: ${fieldData.field_size || 'Not specified'} hectares
+- Soil Type: ${fieldData.soil_type || 'Not specified'}
+- Planting Date: ${fieldData.planting_date || 'Not specified'} (${daysSincePlanting} days ago)
+- Current Growth Stage: ${fieldData.growth_stage || 'Not specified'}
+- Growth Stage Assessment: ${growthStageInfo}
+- Farm Location: ${farmingRegion.region} (${farmingRegion.description})
+- GPS Coordinates: Latitude ${fieldData.latitude || 'Not specified'}, Longitude ${fieldData.longitude || 'Not specified'}
+
+## Field Management:
+- Irrigation Type: ${fieldData.irrigation_type || 'Not specified'}
+- Basal Fertilizer: ${fieldData.basal_fertilizer || 'Not specified'} (${fieldData.basal_fertilizer_amount || 'amount not specified'})
+- Top Dressing: ${fieldData.top_dressing || 'Not specified'} (${fieldData.top_dressing_amount || 'amount not specified'})
+- Last Yield: ${fieldData.last_yield || 'Not specified'} (${fieldData.last_yield_unit || 'unit not specified'})
+- Last Yield Comparison: ${fieldData.last_yield_compare || 'Not specified'}
+
+## Field Health:
+- Pest Infestation: ${fieldData.pest_infestation || 'Not specified'}
+- Pest Control Methods: ${fieldData.pest_control || 'Not specified'}
+- Signs of Diseases: ${fieldData.signs_of_diseases || 'Not specified'} 
+- Weed Pressure: ${fieldData.weed_pressure || 'Not specified'}
+- Field Health Assessment: ${fieldHealth}
+
+## Weather Conditions:
+- Historical Weather: ${weatherSummary}
+- Weather Forecast: ${weatherForecast}
+
+Based on this information, please provide:
+
+1. A concise analysis of current field conditions and the suitability of the crop for this farming region
+2. Specific, actionable recommendations for managing this crop at its current growth stage
+3. Potential risks based on the weather, field conditions, and regional factors
+4. Opportunities for optimizing yield and quality
+
+Focus on practical advice specific to Zimbabwe's agricultural conditions. Include expected outcomes if the recommendations are followed.
+`;
+}
+
+/**
+ * Determine Zimbabwe's natural farming region based on GPS coordinates
+ */
+function determineZimbabweFarmingRegion(latitude, longitude) {
+  // This is a simplified approximation
+  // In a real implementation, you would use GIS data or a more sophisticated algorithm
+  
+  // Default if coordinates are not provided
+  if (!latitude || !longitude) {
+    return {
+      region: "Unknown Region",
+      description: "region not determined due to missing coordinates"
+    };
+  }
+  
+  // Very rough approximations - these should be replaced with actual GIS data
+  // Region I: Eastern Highlands
+  if (longitude > 32.0 && latitude < -18.5) {
+    return {
+      region: "Natural Region I",
+      description: "specialized and diversified farming region with > 1000mm rainfall annually"
+    };
+  }
+  // Region II: Northeastern Zimbabwe
+  else if (longitude > 30.5 && latitude < -17.0) {
+    return {
+      region: "Natural Region II",
+      description: "intensive farming region with 750-1000mm rainfall annually"
+    };
+  }
+  // Region III: Central Zimbabwe
+  else if (longitude > 29.0 && latitude < -19.0) {
+    return {
+      region: "Natural Region III",
+      description: "semi-intensive farming region with 650-800mm rainfall annually"
+    };
+  }
+  // Region IV: Western and Southern Zimbabwe
+  else if (longitude < 29.0 || latitude > -17.0) {
+    return {
+      region: "Natural Region IV",
+      description: "semi-extensive farming region with 450-650mm rainfall annually"
+    };
+  }
+  // Region V: Southern Zimbabwe
+  else {
+    return {
+      region: "Natural Region V",
+      description: "extensive farming region with < 450mm rainfall annually"
+    };
+  }
+}
+
+/**
+ * Get information about the crop's growth stage
+ */
+function getCropGrowthStageInfo(cropType, daysSincePlanting, reportedStage) {
+  if (!cropType) return "Unable to determine growth stage due to missing crop type";
+  
+  // Use reported stage if available
+  if (reportedStage) {
+    return `Reported as ${reportedStage}`;
+  }
+  
+  // Estimate based on crop type and days since planting
+  switch (cropType.toLowerCase()) {
+    case 'maize':
+      if (daysSincePlanting < 15) return "Early vegetative stage (emergence to V3)";
+      if (daysSincePlanting < 40) return "Vegetative stage (V4 to V8)";
+      if (daysSincePlanting < 70) return "Reproductive stage beginning (V9 to VT, tasseling)";
+      if (daysSincePlanting < 100) return "Reproductive stage (R1 silking to R3 milk)";
+      if (daysSincePlanting < 130) return "Maturing stage (R4 dough to R5 dent)";
+      return "Harvest stage (R6 physiological maturity)";
+      
+    case 'wheat':
+      if (daysSincePlanting < 20) return "Seedling growth";
+      if (daysSincePlanting < 45) return "Tillering";
+      if (daysSincePlanting < 70) return "Stem extension";
+      if (daysSincePlanting < 85) return "Heading and flowering";
+      if (daysSincePlanting < 120) return "Grain filling";
+      return "Ripening and maturity";
+      
+    case 'cotton':
+      if (daysSincePlanting < 25) return "Emergence and seedling establishment";
+      if (daysSincePlanting < 60) return "Vegetative growth";
+      if (daysSincePlanting < 90) return "Squaring and early bloom";
+      if (daysSincePlanting < 120) return "Flowering and boll development";
+      if (daysSincePlanting < 160) return "Boll opening and maturation";
+      return "Harvest stage";
+      
+    case 'soybean':
+      if (daysSincePlanting < 15) return "Emergence and seedling (VE-VC)";
+      if (daysSincePlanting < 45) return "Vegetative stages (V1-V5)";
+      if (daysSincePlanting < 75) return "Flowering and pod development (R1-R3)";
+      if (daysSincePlanting < 100) return "Pod filling (R4-R5)";
+      if (daysSincePlanting < 120) return "Seed maturation (R6-R7)";
+      return "Harvest maturity (R8)";
+      
+    default:
+      return `${daysSincePlanting} days since planting`;
+  }
+}
+
+/**
+ * Assess field health based on available data
+ */
+function assessFieldHealth(fieldData) {
+  const healthIssues = [];
+  
+  if (fieldData.pest_infestation === 'Yes' || fieldData.pest_infestation === 'yes') {
+    healthIssues.push("Pest infestation present");
+  }
+  
+  if (fieldData.signs_of_diseases && 
+      (fieldData.signs_of_diseases === 'Yes' || 
+       fieldData.signs_of_diseases === 'yes' || 
+       fieldData.signs_of_diseases.toLowerCase().includes('yes'))) {
+    healthIssues.push("Disease symptoms observed");
+  }
+  
+  if (fieldData.weed_pressure && 
+      (fieldData.weed_pressure === 'High' || 
+       fieldData.weed_pressure === 'high' || 
+       fieldData.weed_pressure.toLowerCase().includes('high'))) {
+    healthIssues.push("High weed pressure");
+  }
+  
+  if (healthIssues.length === 0) {
+    return "No major health issues reported";
+  }
+  
+  return healthIssues.join(", ");
 }
 
 /**
@@ -159,7 +336,7 @@ Include:
 function formatAnalysisToMarkdown(text) {
   // Split by new lines and look for sections
   const lines = text.split('\n');
-  let formatted = `## Field Analysis\n\n`;
+  let formatted = `## Field Analysis Report\n\n`;
   
   let currentSection = '';
   let sectionContent = [];
@@ -209,7 +386,7 @@ function formatAnalysisToMarkdown(text) {
 }
 
 /**
- * Alternative analysis when Hugging Face is unavailable
+ * Alternative analysis when OpenAI is unavailable
  * Uses rule-based analysis for common crops
  */
 function alternativeAnalysis(fieldData, weatherData) {
@@ -218,7 +395,7 @@ function alternativeAnalysis(fieldData, weatherData) {
   
   // Create analysis object
   const analysis = {
-    summary: `Analysis for ${field_size}ha of ${crop_type || 'crops'} planted on ${planting_date || 'unknown date'}`,
+    summary: `Analysis for ${field_size || 'Unknown size'}ha of ${crop_type || 'crops'} planted on ${planting_date || 'unknown date'}`,
     recommendations: [],
     risks: [],
     opportunities: []
@@ -324,9 +501,7 @@ function analyzeWeather(weatherData, cropType) {
   return summary;
 }
 
-/**
- * Crop-specific analysis function for maize
- */
+// The existing crop-specific analysis functions can remain unchanged
 function analyzeMaize(fieldData, weatherData) {
   const analysis = {
     recommendations: [
@@ -362,9 +537,6 @@ function analyzeMaize(fieldData, weatherData) {
   return analysis;
 }
 
-/**
- * Crop-specific analysis function for wheat
- */
 function analyzeWheat(fieldData, weatherData) {
   return {
     recommendations: [
@@ -383,9 +555,6 @@ function analyzeWheat(fieldData, weatherData) {
   };
 }
 
-/**
- * Crop-specific analysis function for soybean
- */
 function analyzeSoybean(fieldData, weatherData) {
   return {
     recommendations: [
@@ -404,9 +573,6 @@ function analyzeSoybean(fieldData, weatherData) {
   };
 }
 
-/**
- * Crop-specific analysis function for cotton
- */
 function analyzeCotton(fieldData, weatherData) {
   return {
     recommendations: [
@@ -425,9 +591,6 @@ function analyzeCotton(fieldData, weatherData) {
   };
 }
 
-/**
- * Crop-specific analysis function for tobacco
- */
 function analyzeTobacco(fieldData, weatherData) {
   return {
     recommendations: [
@@ -447,9 +610,6 @@ function analyzeTobacco(fieldData, weatherData) {
   };
 }
 
-/**
- * Crop-specific analysis function for groundnuts
- */
 function analyzeGroundnut(fieldData, weatherData) {
   return {
     recommendations: [
@@ -468,9 +628,6 @@ function analyzeGroundnut(fieldData, weatherData) {
   };
 }
 
-/**
- * Crop-specific analysis function for sunflower
- */
 function analyzeSunflower(fieldData, weatherData) {
   return {
     recommendations: [
@@ -489,9 +646,6 @@ function analyzeSunflower(fieldData, weatherData) {
   };
 }
 
-/**
- * Crop-specific analysis function for sorghum
- */
 function analyzeSorghum(fieldData, weatherData) {
   return {
     recommendations: [
@@ -510,9 +664,6 @@ function analyzeSorghum(fieldData, weatherData) {
   };
 }
 
-/**
- * Generic analysis for other crops
- */
 function generalCropAnalysis(fieldData, weatherData) {
   return {
     recommendations: [
@@ -565,35 +716,6 @@ function formatAnalysis(analysis) {
   }
   
   return text;
-}
-
-/**
- * Generate prompt for Hugging Face analysis
- */
-function generatePrompt(fieldData, weatherData) {
-  return `
-Field Information:
-- Crop Type: ${fieldData.crop_type || 'Not specified'}
-- Variety: ${fieldData.variety || 'Not specified'}
-- Field Size: ${fieldData.field_size || 'Not specified'} hectares
-- Soil Type: ${fieldData.soil_type || 'Not specified'}
-- Planting Date: ${fieldData.planting_date || 'Not specified'}
-- Current Growth Stage: ${fieldData.growth_stage || 'Not specified'}
-- Location: Latitude ${fieldData.latitude || 'Not specified'}, Longitude ${fieldData.longitude || 'Not specified'}
-
-Field Health:
-- Pest Infestation: ${fieldData.pest_infestation || 'Not specified'}
-- Pest Control Methods: ${fieldData.pest_control || 'Not specified'}
-- Signs of Diseases: ${fieldData.signs_of_diseases || 'Not specified'}
-- Weed Pressure: ${fieldData.weed_pressure || 'Not specified'}
-
-Recent Weather Data:
-${weatherData && weatherData.daily ? `
-- Average Max Temperature: ${average(weatherData.daily.temperature_2m_max).toFixed(1)}°C
-- Average Min Temperature: ${average(weatherData.daily.temperature_2m_min).toFixed(1)}°C
-- Total Precipitation: ${sum(weatherData.daily.precipitation_sum).toFixed(1)}mm
-` : 'Weather data unavailable'}
-`;
 }
 
 // Helper functions
