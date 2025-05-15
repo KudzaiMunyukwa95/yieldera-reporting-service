@@ -98,7 +98,7 @@ async function generateAndSendReport(fieldId) {
 async function getFieldData(fieldId) {
   try {
     const [rows] = await pool.query(
-      'SELECT * FROM fields WHERE id = ?',
+      'SELECT * FROM fields WHERE field_id = ?',
       [fieldId]
     );
     
