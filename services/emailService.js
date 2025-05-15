@@ -10,10 +10,10 @@ let transporter;
 // Function to create transporter with proper configuration
 function createTransporter() {
   // Default values as fallback
-  const host = process.env.EMAIL_HOST || 'smtp.gmail.com';
+  const host = process.env.EMAIL_HOST || 'smtp.yieldera.co.zw';
   const port = parseInt(process.env.EMAIL_PORT || '587');
   const secure = process.env.EMAIL_SECURE === 'true';
-  const user = process.env.EMAIL_USER || 'kudzaimunyukwa@gmail.com';
+  const user = process.env.EMAIL_USER || 'reports@yieldera.co.zw';
   const pass = process.env.EMAIL_PASSWORD;
   
   // Check if we have the required credentials
@@ -70,24 +70,8 @@ async function testEmailConfig() {
         // Recreate the transporter
         transporter = createTransporter();
       } else {
-        // Set up Gmail fallback if all retries fail with original provider
-        console.log('Setting up fallback email transport...');
-        try {
-          // Try using a different port or provider as a last resort
-          transporter = nodemailer.createTransport({
-            service: 'gmail',  // Use Gmail service presets
-            auth: {
-              user: process.env.FALLBACK_EMAIL_USER || process.env.EMAIL_USER,
-              pass: process.env.FALLBACK_EMAIL_PASSWORD || process.env.EMAIL_PASSWORD
-            }
-          });
-          await transporter.verify();
-          console.log('Fallback email transporter is ready');
-          return true;
-        } catch (fallbackError) {
-          console.error('Fallback email configuration also failed:', fallbackError);
-          return false;
-        }
+        console.error('All email connection attempts failed');
+        return false;
       }
     }
   }
