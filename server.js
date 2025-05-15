@@ -2,7 +2,7 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const cron = require('node-cron');
 const { testConnection } = require('./config/db');
-const { verifyTransporter } = require('./services/emailService');
+const emailService = require('./services/emailService');
 const webhookController = require('./controllers/webhookController');
 const reportController = require('./controllers/reportController');
 require('dotenv').config();
@@ -32,7 +32,7 @@ app.get('/api/reports/generate-all', reportController.generateAllReports);
 // Health check endpoint
 app.get('/health', async (req, res) => {
   const dbStatus = await testConnection();
-  const emailStatus = await verifyTransporter();
+  const emailStatus = await emailService.testEmailConfig();
   
   res.json({
     service: 'Yieldera Reporting Service',
@@ -77,7 +77,7 @@ app.listen(PORT, async () => {
   await testConnection();
   
   // Test email configuration
-  await verifyTransporter();
+  await emailService.testEmailConfig();
 });
 
 // Error handling
