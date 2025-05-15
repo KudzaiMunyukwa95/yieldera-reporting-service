@@ -1,53 +1,135 @@
-const { OpenAI } = require('openai');
+const axios = require('axios');
 require('dotenv').config();
 
-// Initialize the OpenAI client if API key is available
-let openai;
-try {
-  if (process.env.OPENAI_API_KEY) {
-    openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY
-    });
-  }
-} catch (error) {
-  console.warn('OpenAI initialization failed, using alternative analysis');
-}
+// Initialize Hugging Face client if API key is available
+let huggingFaceApiKey = process.env.HUGGINGFACE_API_KEY;
 
 /**
- * Analyzes field data with OpenAI
+ * Analyzes field data with Hugging Face
  */
 async function analyzeWithAI(fieldData, weatherData) {
-  if (!openai) {
+  if (!huggingFaceApiKey) {
     return alternativeAnalysis(fieldData, weatherData);
   }
   
   try {
     const prompt = generatePrompt(fieldData, weatherData);
     
-    const completion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages: [
-        { role: "system", content: "You are an expert agricultural analyst with deep knowledge of farming in Zimbabwe. Provide practical, actionable advice for farmers based on field and weather data." },
-        { role: "user", content: prompt }
-      ],
-      temperature: 0.7,
-      max_tokens: 1000
-    });
+    // Format prompt for Mistral model
+    const formattedPrompt = `<s>[INST] You are an expert agricultural analyst with deep knowledge of farming in Zimbabwe. Provide practical, actionable advice for farmers based on the following field and weather data:
+
+${prompt}
+
+Please provide:
+1. A brief analysis of the current field conditions
+2. Specific recommendations for managing this crop at its current stage
+3. Potential risks based on the weather and field conditions
+4. Opportunities for optimizing yield and quality
+
+Focus on practical, actionable advice specific to farming in Zimbabwe. [/INST]</s>`;
+    
+    const response = await axios.post(
+      "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2",
+      {
+        inputs: formattedPrompt,
+        parameters: {
+          max_new_tokens: 1024,
+          temperature: 0.7,
+          return_full_text: false
+        }
+      },
+      {
+        headers: {
+          "Authorization": `Bearer ${huggingFaceApiKey}`,
+          "Content-Type": "application/json"
+        }
+      }
+    );
+
+    // Extract the generated text
+    let analysis = '';
+    if (response.data && Array.isArray(response.data)) {
+      analysis = response.data[0].generated_text;
+    } else if (response.data && response.data.generated_text) {
+      analysis = response.data.generated_text;
+    } else {
+      throw new Error('Unexpected response format from Hugging Face API');
+    }
+
+    // Format the analysis into Markdown sections if it's not already
+    if (!analysis.includes('#') && !analysis.includes('###')) {
+      analysis = formatAnalysisToMarkdown(analysis);
+    }
 
     return {
       success: true,
-      analysis: completion.choices[0].message.content,
-      source: "openai"
+      analysis: analysis,
+      source: "huggingface"
     };
   } catch (error) {
-    console.error('OpenAI API error:', error.message);
-    // Fallback to alternative analysis if OpenAI fails
+    console.error('Hugging Face API error:', error.message);
+    // Fallback to alternative analysis if Hugging Face fails
     return alternativeAnalysis(fieldData, weatherData);
   }
 }
 
 /**
- * Alternative analysis when OpenAI is unavailable
+ * Format plain text analysis to Markdown
+ */
+function formatAnalysisToMarkdown(text) {
+  // Split by new lines and look for sections
+  const lines = text.split('\n');
+  let formatted = `## Field Analysis\n\n`;
+  
+  let currentSection = '';
+  let sectionContent = [];
+  
+  // Try to identify sections
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    
+    // Skip empty lines
+    if (!trimmedLine) continue;
+    
+    // Check if this line looks like a section header
+    if (
+      trimmedLine.toLowerCase().includes('analysis') ||
+      trimmedLine.toLowerCase().includes('recommendations') ||
+      trimmedLine.toLowerCase().includes('risks') ||
+      trimmedLine.toLowerCase().includes('opportunities') ||
+      /^\d+\.\s+[A-Z]/.test(trimmedLine) // numbered point starting with capital letter
+    ) {
+      // If we have content from a previous section, add it
+      if (currentSection && sectionContent.length) {
+        formatted += `### ${currentSection}\n`;
+        for (const content of sectionContent) {
+          formatted += `- ${content}\n`;
+        }
+        formatted += '\n';
+      }
+      
+      // Start new section
+      currentSection = trimmedLine.replace(/^\d+\.\s+/, ''); // Remove numbering if present
+      sectionContent = [];
+    } else {
+      // Add to current section content
+      sectionContent.push(trimmedLine);
+    }
+  }
+  
+  // Add the last section
+  if (currentSection && sectionContent.length) {
+    formatted += `### ${currentSection}\n`;
+    for (const content of sectionContent) {
+      formatted += `- ${content}\n`;
+    }
+  }
+  
+  return formatted;
+}
+
+/**
+ * Alternative analysis when Hugging Face is unavailable
  * Uses rule-based analysis for common crops
  */
 function alternativeAnalysis(fieldData, weatherData) {
@@ -79,6 +161,18 @@ function alternativeAnalysis(fieldData, weatherData) {
       break;
     case 'cotton':
       cropAnalysis = analyzeCotton(fieldData, weatherData);
+      break;
+    case 'tobacco':
+      cropAnalysis = analyzeTobacco(fieldData, weatherData);
+      break;
+    case 'groundnut':
+      cropAnalysis = analyzeGroundnut(fieldData, weatherData);
+      break;
+    case 'sunflower':
+      cropAnalysis = analyzeSunflower(fieldData, weatherData);
+      break;
+    case 'sorghum':
+      cropAnalysis = analyzeSorghum(fieldData, weatherData);
       break;
     default:
       cropAnalysis = generalCropAnalysis(fieldData, weatherData);
@@ -127,6 +221,20 @@ function analyzeWeather(weatherData, cropType) {
     } else if (totalRain > 50) {
       summary += " Heavy rainfall may cause waterlogging. Ensure proper drainage.";
     }
+  } else if (cropType.toLowerCase() === 'cotton') {
+    if (avgTemp > 35) {
+      summary += "Temperatures are too high for optimal cotton development. Consider additional irrigation.";
+    } else if (avgTemp < 15) {
+      summary += "Temperatures are lower than optimal for cotton growth. Growth may be slower than expected.";
+    } else {
+      summary += "Temperature conditions are favorable for cotton.";
+    }
+    
+    if (totalRain < 10) {
+      summary += " Current rainfall is insufficient for optimal cotton growth. Consider irrigation.";
+    } else if (totalRain > 40) {
+      summary += " Heavy rainfall may increase risk of boll rot. Monitor closely.";
+    }
   }
   
   return summary;
@@ -152,12 +260,28 @@ function analyzeMaize(fieldData, weatherData) {
     ]
   };
   
+  // Add soil-specific recommendations
+  if (fieldData.soil_type && fieldData.soil_type.toLowerCase() === 'sandy') {
+    analysis.recommendations.push("Sandy soils benefit from additional organic matter to improve water retention.");
+    analysis.recommendations.push("Consider more frequent but lighter irrigation for sandy soils.");
+  } else if (fieldData.soil_type && fieldData.soil_type.toLowerCase() === 'clay') {
+    analysis.recommendations.push("Clay soils may require special attention to drainage to prevent waterlogging.");
+    analysis.recommendations.push("Avoid working with clay soil when it's too wet to prevent compaction.");
+  }
+  
+  // Add pest-specific recommendations if pest problems reported
+  if (fieldData.pest_infestation === 'Yes') {
+    analysis.recommendations.push("For maize, common pests include fall armyworm and stalk borers. Consider appropriate insecticides.");
+    analysis.recommendations.push("Implement integrated pest management practices like crop rotation and natural predators.");
+  }
+  
   return analysis;
 }
 
-// Additional crop analysis functions would be implemented here
+/**
+ * Crop-specific analysis function for wheat
+ */
 function analyzeWheat(fieldData, weatherData) {
-  // Implementation for wheat analysis
   return {
     recommendations: [
       "Maintain proper irrigation scheduling for optimal wheat development.",
@@ -175,8 +299,10 @@ function analyzeWheat(fieldData, weatherData) {
   };
 }
 
+/**
+ * Crop-specific analysis function for soybean
+ */
 function analyzeSoybean(fieldData, weatherData) {
-  // Implementation for soybean analysis
   return {
     recommendations: [
       "Ensure proper inoculation with rhizobium bacteria for nitrogen fixation.",
@@ -194,8 +320,10 @@ function analyzeSoybean(fieldData, weatherData) {
   };
 }
 
+/**
+ * Crop-specific analysis function for cotton
+ */
 function analyzeCotton(fieldData, weatherData) {
-  // Implementation for cotton analysis
   return {
     recommendations: [
       "Monitor for bollworms and apply appropriate pest control measures.",
@@ -209,6 +337,91 @@ function analyzeCotton(fieldData, weatherData) {
     opportunities: [
       "Proper defoliation timing can improve harvest efficiency and quality.",
       "Cotton responds well to precise nutrient management; soil testing is recommended."
+    ]
+  };
+}
+
+/**
+ * Crop-specific analysis function for tobacco
+ */
+function analyzeTobacco(fieldData, weatherData) {
+  return {
+    recommendations: [
+      "Monitor nitrogen levels closely as they affect leaf quality and nicotine content.",
+      "Implement strict pest and disease management to maintain leaf quality.",
+      "Maintain even irrigation to avoid stress that can affect leaf quality."
+    ],
+    risks: [
+      "Excessive rainfall can lead to fungal diseases like blue mold and black shank.",
+      "Drought stress can significantly reduce yield and quality.",
+      "Incorrect topping and sucker control can reduce yield and quality."
+    ],
+    opportunities: [
+      "Proper curing techniques have significant impact on final leaf quality and price.",
+      "Attention to detail in harvesting timing can improve quality grades."
+    ]
+  };
+}
+
+/**
+ * Crop-specific analysis function for groundnuts
+ */
+function analyzeGroundnut(fieldData, weatherData) {
+  return {
+    recommendations: [
+      "Calcium is critical during pod formation; ensure adequate levels through soil testing.",
+      "Maintain consistent soil moisture, especially during flowering and pod development.",
+      "Monitor for early and late leaf spot diseases and implement fungicide programs if needed."
+    ],
+    risks: [
+      "Aflatoxin contamination is a serious risk, especially in drought conditions followed by rain.",
+      "Drought stress during pod filling can significantly reduce yield and quality."
+    ],
+    opportunities: [
+      "Groundnuts improve soil fertility for subsequent crops through nitrogen fixation.",
+      "Good weed control early in the season is essential for maximum yields."
+    ]
+  };
+}
+
+/**
+ * Crop-specific analysis function for sunflower
+ */
+function analyzeSunflower(fieldData, weatherData) {
+  return {
+    recommendations: [
+      "Consider boron application if soil tests indicate deficiency; critical for seed set.",
+      "Control weeds early as sunflowers compete poorly in early growth stages.",
+      "Monitor for bird damage as heads begin to form and mature."
+    ],
+    risks: [
+      "Drought stress during flowering can significantly reduce yield.",
+      "Head rot diseases can be problematic in humid conditions."
+    ],
+    opportunities: [
+      "Sunflowers have deep taproots that can access water and nutrients unavailable to other crops.",
+      "Their drought tolerance makes them suitable for marginal areas or late planting situations."
+    ]
+  };
+}
+
+/**
+ * Crop-specific analysis function for sorghum
+ */
+function analyzeSorghum(fieldData, weatherData) {
+  return {
+    recommendations: [
+      "Control weeds early as sorghum grows slowly in initial stages.",
+      "Monitor for sorghum midge during flowering.",
+      "Bird damage can be significant; consider control measures as grain develops."
+    ],
+    risks: [
+      "Head smut and covered kernel smut can reduce yield and quality.",
+      "Drought stress during boot and flowering stages is most damaging to yield."
+    ],
+    opportunities: [
+      "Sorghum is more drought-tolerant than maize, making it suitable for drier areas.",
+      "Has lower nitrogen requirements than maize, reducing input costs."
     ]
   };
 }
@@ -271,12 +484,10 @@ function formatAnalysis(analysis) {
 }
 
 /**
- * Generate prompt for OpenAI analysis
+ * Generate prompt for Hugging Face analysis
  */
 function generatePrompt(fieldData, weatherData) {
   return `
-I need an agricultural analysis for a farmer in Zimbabwe with the following field details:
-
 Field Information:
 - Crop Type: ${fieldData.crop_type}
 - Variety: ${fieldData.variety || 'Not specified'}
@@ -298,14 +509,6 @@ ${weatherData && weatherData.daily ? `
 - Average Min Temperature: ${average(weatherData.daily.temperature_2m_min).toFixed(1)}°C
 - Total Precipitation: ${sum(weatherData.daily.precipitation_sum).toFixed(1)}mm
 ` : 'Weather data unavailable'}
-
-Please provide:
-1. A brief analysis of the current field conditions
-2. Specific recommendations for managing this crop at its current stage
-3. Potential risks based on the weather and field conditions
-4. Opportunities for optimizing yield and quality
-
-Focus on practical, actionable advice specific to farming in Zimbabwe.
 `;
 }
 
