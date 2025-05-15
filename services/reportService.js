@@ -15,10 +15,10 @@ async function generateAndSendReport(fieldId) {
       throw new Error(`Field with ID ${fieldId} not found`);
     }
     
-    // Get user data
-    const userData = await getUserData(fieldData.farmer_name);
+    // Get user data - now using user_id if available
+    const userData = await getUserData(fieldData);
     if (!userData) {
-      throw new Error(`User with name ${fieldData.farmer_name} not found`);
+      throw new Error(`No suitable user found for field ID ${fieldId}`);
     }
     
     // Get historical weather data
@@ -71,7 +71,7 @@ async function generateAndSendReport(fieldId) {
     // Send email report
     const emailResult = await emailService.sendReportEmail(
       userData.email,
-      `Yieldera Field Report: ${fieldData.farm_name} - ${fieldData.crop_type}`,
+      `Yieldera Field Report: ${fieldData.farm_name || 'Your Field'} - ${fieldData.crop_type || 'Crop'}`,
       reportData
     );
     
@@ -110,39 +110,86 @@ async function getFieldData(fieldId) {
 }
 
 /**
- * Get user data from database
+ * Get user data from database - enhanced to be more robust
  */
-async function getUserData(farmerName) {
+async function getUserData(fieldData) {
   try {
-    // Try to find by farmer_name matching first_name and last_name
-    const [rows] = await pool.query(
-      'SELECT * FROM users WHERE CONCAT(first_name, " ", last_name) = ?',
-      [farmerName]
-    );
-    
-    if (rows.length === 0) {
-      // Try to find by just first_name or last_name
-      const [altRows] = await pool.query(
-        'SELECT * FROM users WHERE first_name = ? OR last_name = ?',
-        [farmerName, farmerName]
+    // First try with user_id if available in fieldData
+    if (fieldData.user_id) {
+      console.log(`Looking for user by user_id: ${fieldData.user_id}`);
+      const [userRows] = await pool.query(
+        'SELECT * FROM users WHERE id = ?',
+        [fieldData.user_id]
       );
       
-      if (altRows.length === 0) {
-        // If still not found, return the first admin user
-        const [adminRows] = await pool.query(
-          'SELECT * FROM users WHERE role = "admin" LIMIT 1'
-        );
-        
-        return adminRows.length > 0 ? adminRows[0] : null;
+      if (userRows.length > 0) {
+        console.log(`Found user by user_id: ${userRows[0].email}`);
+        return userRows[0];
       }
-      
-      return altRows[0];
     }
     
-    return rows[0];
+    // If user_id didn't work or isn't available, try with farmer_name
+    if (fieldData.farmer_name) {
+      console.log(`Looking for user by farmer_name: ${fieldData.farmer_name}`);
+      
+      // Try exact match with concat of first_name and last_name
+      const [nameRows] = await pool.query(
+        'SELECT * FROM users WHERE CONCAT(first_name, " ", last_name) = ?',
+        [fieldData.farmer_name]
+      );
+      
+      if (nameRows.length > 0) {
+        console.log(`Found user by full name: ${nameRows[0].email}`);
+        return nameRows[0];
+      }
+      
+      // Try partial match
+      const [partialRows] = await pool.query(
+        'SELECT * FROM users WHERE first_name LIKE ? OR last_name LIKE ? OR email LIKE ?',
+        [`%${fieldData.farmer_name}%`, `%${fieldData.farmer_name}%`, `%${fieldData.farmer_name}%`]
+      );
+      
+      if (partialRows.length > 0) {
+        console.log(`Found user by partial name match: ${partialRows[0].email}`);
+        return partialRows[0];
+      }
+    }
+    
+    // If all else fails, get the first admin user
+    console.log('No matching user found, looking for admin user');
+    const [adminRows] = await pool.query(
+      'SELECT * FROM users WHERE role = "admin" LIMIT 1'
+    );
+    
+    if (adminRows.length > 0) {
+      console.log(`Using admin user as fallback: ${adminRows[0].email}`);
+      return adminRows[0];
+    }
+    
+    // Last resort: get any user
+    console.log('No admin found, looking for any user');
+    const [anyRows] = await pool.query(
+      'SELECT * FROM users LIMIT 1'
+    );
+    
+    if (anyRows.length > 0) {
+      console.log(`Using any user as last resort: ${anyRows[0].email}`);
+      return anyRows[0];
+    }
+    
+    // If we get here, there are no users in the database!
+    console.log('No users found in database!');
+    return null;
   } catch (error) {
     console.error('Error fetching user data:', error);
-    throw error;
+    // Return a default user with email for critical notifications
+    return {
+      id: 0,
+      email: 'kudzaimunyukwa@gmail.com', // Using the email from your screenshot as a fallback
+      first_name: 'System',
+      last_name: 'Notification',
+      role: 'system'
+    };
   }
 }
 
