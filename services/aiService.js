@@ -69,6 +69,9 @@ async function analyzeWithOpenAI(fieldData, weatherData, forecastData) {
   // Extract the response content
   const analysis = response.data.choices[0].message.content.trim();
   
+  // Get natural language field summary and weather summary
+  const fieldSummary = await generateFieldSummary(fieldData, weatherData);
+  
   // Format the analysis as Markdown if not already
   let formattedAnalysis = analysis;
   if (!analysis.includes('#')) {
@@ -78,8 +81,156 @@ async function analyzeWithOpenAI(fieldData, weatherData, forecastData) {
   return {
     success: true,
     analysis: formattedAnalysis,
-    source: "openai"
+    source: "openai",
+    fieldSummary: fieldSummary.fieldSummary,
+    weatherSummary: fieldSummary.weatherSummary,
+    locationName: await determineLocationFromCoordinates(fieldData.latitude, fieldData.longitude)
   };
+}
+
+/**
+ * Generate natural language field summary using OpenAI
+ */
+async function generateFieldSummary(fieldData, weatherData) {
+  try {
+    // Calculate days since planting
+    let daysSincePlanting = "Unknown";
+    let growthStageInfo = "Unknown growth stage";
+    
+    if (fieldData.planting_date) {
+      try {
+        const plantingDate = new Date(fieldData.planting_date);
+        const currentDate = new Date();
+        const diffTime = Math.abs(currentDate - plantingDate);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        daysSincePlanting = diffDays;
+        
+        // Add growth stage information based on crop type and days since planting
+        growthStageInfo = getCropGrowthStageInfo(fieldData.crop_type, diffDays, fieldData.growth_stage);
+      } catch (error) {
+        console.log("Error calculating days since planting:", error.message);
+      }
+    }
+    
+    // Format weather summary
+    let weatherStats = {};
+    if (weatherData && weatherData.daily) {
+      try {
+        const temps = weatherData.daily.temperature_2m_max;
+        weatherStats.avgMaxTemp = average(temps).toFixed(1);
+        weatherStats.avgMinTemp = average(weatherData.daily.temperature_2m_min).toFixed(1);
+        weatherStats.totalRain = sum(weatherData.daily.precipitation_sum).toFixed(1);
+        weatherStats.minTemp = Math.min(...weatherData.daily.temperature_2m_min).toFixed(1);
+        weatherStats.maxTemp = Math.max(...weatherData.daily.temperature_2m_max).toFixed(1);
+      } catch (error) {
+        console.log("Error calculating weather stats:", error.message);
+      }
+    }
+
+    const summaryPrompt = `
+Generate a concise, one-paragraph natural language summary (3-4 sentences) of the following agricultural field:
+
+Field name: ${fieldData.farm_name || 'Unnamed field'}
+Crop type: ${fieldData.crop_type || 'Unknown crop'}
+Variety: ${fieldData.variety || 'Unknown variety'}
+Field size: ${fieldData.field_size || 'Unknown'} hectares
+Planting date: ${fieldData.planting_date || 'Unknown date'} (approximately ${daysSincePlanting} days ago)
+Current growth stage: ${fieldData.growth_stage || growthStageInfo}
+Soil type: ${fieldData.soil_type || 'Unknown soil type'}
+Farmer: ${fieldData.farmer_name || 'Unknown farmer'}
+
+Make the summary sound natural and conversational, not like a list of facts. Mention where the field is located in Zimbabwe if possible based on coordinates: Latitude ${fieldData.latitude || 'Unknown'}, Longitude ${fieldData.longitude || 'Unknown'}.
+
+Then, in a separate paragraph, create a weather summary for the field that includes these key details:
+- Total rainfall in the past 30 days: ${weatherStats.totalRain || 'Unknown'} mm
+- Temperature range in the past 30 days: ${weatherStats.minTemp || 'Unknown'}°C to ${weatherStats.maxTemp || 'Unknown'}°C
+- Average daily max temperature: ${weatherStats.avgMaxTemp || 'Unknown'}°C
+- Average daily min temperature: ${weatherStats.avgMinTemp || 'Unknown'}°C
+`;
+
+    const response = await axios.post(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        model: "gpt-3.5-turbo",
+        messages: [
+          {
+            role: "system",
+            content: "You are a helpful agricultural expert familiar with Zimbabwe farming regions and practices."
+          },
+          {
+            role: "user",
+            content: summaryPrompt
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 300
+      },
+      {
+        headers: {
+          "Authorization": `Bearer ${openaiApiKey}`,
+          "Content-Type": "application/json"
+        }
+      }
+    );
+
+    // Extract the response content and split paragraphs
+    const fullSummary = response.data.choices[0].message.content.trim();
+    const paragraphs = fullSummary.split('\n\n');
+    
+    return {
+      fieldSummary: paragraphs[0] || '',
+      weatherSummary: paragraphs[1] || ''
+    };
+  } catch (error) {
+    console.error("Error generating field summary:", error);
+    return {
+      fieldSummary: `This report covers a ${fieldData.field_size || 'N/A'} hectare ${fieldData.crop_type || 'crop'} field${fieldData.variety ? ' (variety: ' + fieldData.variety + ')' : ''} managed by ${fieldData.farmer_name || 'the farmer'}.`,
+      weatherSummary: ''
+    };
+  }
+}
+
+/**
+ * Determine location name from coordinates
+ */
+async function determineLocationFromCoordinates(latitude, longitude) {
+  if (!latitude || !longitude) {
+    return '';
+  }
+  
+  try {
+    // Try to get location name from OpenAI based on coordinates
+    const response = await axios.post(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        model: "gpt-3.5-turbo",
+        messages: [
+          {
+            role: "system",
+            content: "You are an expert on Zimbabwe geography."
+          },
+          {
+            role: "user",
+            content: `Based on these coordinates in Zimbabwe: Latitude ${latitude}, Longitude ${longitude}, provide just the name of the nearest district or town. Reply with only the name, nothing else.`
+          }
+        ],
+        temperature: 0.3,
+        max_tokens: 50
+      },
+      {
+        headers: {
+          "Authorization": `Bearer ${openaiApiKey}`,
+          "Content-Type": "application/json"
+        }
+      }
+    );
+
+    const locationName = response.data.choices[0].message.content.trim();
+    return locationName;
+  } catch (error) {
+    console.error("Error determining location from coordinates:", error);
+    return '';
+  }
 }
 
 /**
@@ -111,26 +262,29 @@ function generateOpenAIPrompt(fieldData, weatherData, forecastData) {
   // Format weather summary
   let weatherSummary = "Weather data unavailable.";
   let weatherForecast = "Forecast unavailable.";
+  let weatherStats = {};
   
   if (weatherData && weatherData.daily) {
     try {
       const temps = weatherData.daily.temperature_2m_max;
-      const avgMaxTemp = average(temps).toFixed(1);
-      const avgMinTemp = average(weatherData.daily.temperature_2m_min).toFixed(1);
-      const totalRain = sum(weatherData.daily.precipitation_sum).toFixed(1);
+      weatherStats.avgMaxTemp = average(temps).toFixed(1);
+      weatherStats.avgMinTemp = average(weatherData.daily.temperature_2m_min).toFixed(1);
+      weatherStats.totalRain = sum(weatherData.daily.precipitation_sum).toFixed(1);
+      weatherStats.minTemp = Math.min(...weatherData.daily.temperature_2m_min).toFixed(1);
+      weatherStats.maxTemp = Math.max(...weatherData.daily.temperature_2m_max).toFixed(1);
       
-      weatherSummary = `Last 30 days: Avg max temp: ${avgMaxTemp}°C, Avg min temp: ${avgMinTemp}°C, Total rainfall: ${totalRain}mm.`;
+      weatherSummary = `Last 30 days: Avg max temp: ${weatherStats.avgMaxTemp}°C, Avg min temp: ${weatherStats.avgMinTemp}°C, Total rainfall: ${weatherStats.totalRain}mm, Temperature range: ${weatherStats.minTemp}°C to ${weatherStats.maxTemp}°C.`;
       
       // Check for extreme conditions
-      if (avgMaxTemp > 32) {
+      if (weatherStats.avgMaxTemp > 32) {
         weatherSummary += " Temperatures have been unusually high.";
-      } else if (avgMaxTemp < 15) {
+      } else if (weatherStats.avgMaxTemp < 15) {
         weatherSummary += " Temperatures have been unusually low.";
       }
       
-      if (totalRain < 10) {
+      if (weatherStats.totalRain < 10) {
         weatherSummary += " Rainfall has been significantly below normal.";
-      } else if (totalRain > 150) {
+      } else if (weatherStats.totalRain > 150) {
         weatherSummary += " Rainfall has been significantly above normal.";
       }
     } catch (error) {
@@ -173,6 +327,10 @@ Please generate a detailed agricultural report for a farmer in Zimbabwe. The rep
 - Top Dressing: ${fieldData.top_dressing || 'Not specified'} (${fieldData.top_dressing_amount || 'amount not specified'})
 - Last Yield: ${fieldData.last_yield || 'Not specified'} (${fieldData.last_yield_unit || 'unit not specified'})
 - Last Yield Comparison: ${fieldData.last_yield_compare || 'Not specified'}
+- Last Loss Cause: ${fieldData.last_loss_cause || 'Not specified'}
+- Last Loss Area: ${fieldData.last_loss_area || 'Not specified'}
+- Backup Power Available: ${fieldData.backup_power || 'Not specified'}
+- Fire Guard Established: ${fieldData.fire_guard || 'Not specified'}
 
 ## Field Health:
 - Pest Infestation: ${fieldData.pest_infestation || 'Not specified'}
@@ -189,7 +347,13 @@ Based on this information, please provide:
 
 1. A concise analysis of current field conditions and the suitability of the crop for this farming region
 2. Specific, actionable recommendations for managing this crop at its current growth stage
-3. Potential risks based on the weather, field conditions, and regional factors
+3. Comprehensive risk assessment addressing:
+   - Pest and disease pressure based on field conditions
+   - Fire risk (especially if no fire guard exists)
+   - Flood and drought risks based on rainfall patterns and soil type
+   - Fertilizer adequacy based on reported applications
+   - Weed management requirements
+   - Potential yield impacts based on past losses and current conditions
 4. Opportunities for optimizing yield and quality
 
 Focus on practical advice specific to Zimbabwe's agricultural conditions. Include expected outcomes if the recommendations are followed.
@@ -447,7 +611,9 @@ function alternativeAnalysis(fieldData, weatherData) {
       weather: weatherSummary,
       ...cropAnalysis
     }),
-    source: "rule-based"
+    source: "rule-based",
+    fieldSummary: `This report covers a ${field_size || 'N/A'} hectare ${crop_type || 'crop'} field${fieldData.variety ? ' (variety: ' + fieldData.variety + ')' : ''} managed by ${fieldData.farmer_name || 'the farmer'}.`,
+    weatherSummary: weatherSummary
   };
 }
 
@@ -459,13 +625,14 @@ function analyzeWeather(weatherData, cropType) {
     return "Weather data unavailable. Please check local forecasts.";
   }
   
-  // Simple weather analysis
+  // Detailed weather analysis
   const temps = weatherData.daily.temperature_2m_max;
   const avgTemp = temps.reduce((sum, temp) => sum + temp, 0) / temps.length;
   const totalRain = weatherData.daily.precipitation_sum.reduce((sum, rain) => sum + rain, 0);
+  const minTemp = Math.min(...weatherData.daily.temperature_2m_min);
+  const maxTemp = Math.max(...weatherData.daily.temperature_2m_max);
   
-  let summary = `Recent average temperature: ${avgTemp.toFixed(1)}°C. `;
-  summary += `Total rainfall: ${totalRain.toFixed(1)}mm. `;
+  let summary = `Over the past 30 days, the field received ${totalRain.toFixed(1)}mm of rainfall, with temperatures ranging from ${minTemp.toFixed(1)}°C to ${maxTemp.toFixed(1)}°C (average: ${avgTemp.toFixed(1)}°C). `;
   
   // Very simple crop-specific weather analysis
   if (cropType && cropType.toLowerCase() === 'maize') {
@@ -501,7 +668,7 @@ function analyzeWeather(weatherData, cropType) {
   return summary;
 }
 
-// The existing crop-specific analysis functions can remain unchanged
+// The rest of the crop-specific analysis functions remain unchanged
 function analyzeMaize(fieldData, weatherData) {
   const analysis = {
     recommendations: [
@@ -534,9 +701,20 @@ function analyzeMaize(fieldData, weatherData) {
     analysis.recommendations.push("Implement integrated pest management practices like crop rotation and natural predators.");
   }
   
+  // Add fire risk assessment
+  if (fieldData.fire_guard === 'No' || !fieldData.fire_guard) {
+    analysis.risks.push("No fire guard reported. Establish a fire guard to protect your crop from wildfires, especially in the dry season.");
+  }
+  
+  // Add backup power assessment
+  if (fieldData.backup_power === 'No' || !fieldData.backup_power) {
+    analysis.risks.push("No backup power reported. Consider a backup power solution to ensure irrigation continuity during power outages.");
+  }
+  
   return analysis;
 }
 
+// Other crop analysis functions remain unchanged
 function analyzeWheat(fieldData, weatherData) {
   return {
     recommendations: [
