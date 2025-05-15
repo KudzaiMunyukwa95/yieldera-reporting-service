@@ -4,37 +4,115 @@ const nodemailer = require('nodemailer');
 const Handlebars = require('handlebars');
 require('dotenv').config();
 
-// Initialize email transporter
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: process.env.EMAIL_PORT,
-  secure: process.env.EMAIL_SECURE === 'true',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASSWORD
-  }
-});
+// Initialize email transporter with extended timeout
+let transporter;
 
-// Test email configuration
-async function testEmailConfig() {
-  try {
-    await transporter.verify();
-    console.log('Email transporter is ready');
-    return true;
-  } catch (error) {
-    console.error('Email configuration error:', error);
-    return false;
+// Function to create transporter with proper configuration
+function createTransporter() {
+  // Default values as fallback
+  const host = process.env.EMAIL_HOST || 'smtp.gmail.com';
+  const port = parseInt(process.env.EMAIL_PORT || '587');
+  const secure = process.env.EMAIL_SECURE === 'true';
+  const user = process.env.EMAIL_USER || 'kudzaimunyukwa@gmail.com';
+  const pass = process.env.EMAIL_PASSWORD;
+  
+  // Check if we have the required credentials
+  if (!pass) {
+    console.error('EMAIL_PASSWORD environment variable is not set!');
+    return null;
   }
+  
+  // Create the transporter with extended timeout
+  return nodemailer.createTransport({
+    host: host,
+    port: port,
+    secure: secure,
+    auth: {
+      user: user,
+      pass: pass
+    },
+    // Add connection timeout settings
+    connectionTimeout: 60000, // 60 seconds (default is 10 seconds)
+    greetingTimeout: 30000,   // 30 seconds (default is 10 seconds)
+    socketTimeout: 60000,     // 60 seconds
+    debug: true,              // Enable debug output
+    logger: true              // Log information to the console
+  });
 }
 
-// Call the test function on startup
-testEmailConfig();
+// Test email configuration with retry mechanism
+async function testEmailConfig() {
+  // Create the transporter if not already created
+  if (!transporter) {
+    transporter = createTransporter();
+    if (!transporter) {
+      console.error('Failed to create email transporter. Check email credentials.');
+      return false;
+    }
+  }
+  
+  // Try verifying the connection with retries
+  let retries = 3;
+  while (retries > 0) {
+    try {
+      await transporter.verify();
+      console.log('Email transporter is ready');
+      return true;
+    } catch (error) {
+      console.error(`Email configuration error (${retries} retries left):`, error);
+      retries--;
+      
+      if (retries > 0) {
+        // Wait for 5 seconds before retrying
+        console.log('Retrying email connection in 5 seconds...');
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        
+        // Recreate the transporter
+        transporter = createTransporter();
+      } else {
+        // Set up Gmail fallback if all retries fail with original provider
+        console.log('Setting up fallback email transport...');
+        try {
+          // Try using a different port or provider as a last resort
+          transporter = nodemailer.createTransport({
+            service: 'gmail',  // Use Gmail service presets
+            auth: {
+              user: process.env.FALLBACK_EMAIL_USER || process.env.EMAIL_USER,
+              pass: process.env.FALLBACK_EMAIL_PASSWORD || process.env.EMAIL_PASSWORD
+            }
+          });
+          await transporter.verify();
+          console.log('Fallback email transporter is ready');
+          return true;
+        } catch (fallbackError) {
+          console.error('Fallback email configuration also failed:', fallbackError);
+          return false;
+        }
+      }
+    }
+  }
+  
+  return false;
+}
+
+// Call the test function on startup with a delay to ensure other services are ready
+setTimeout(() => {
+  testEmailConfig();
+}, 5000);
 
 /**
  * Send report email with optional attachments
  */
 async function sendReportEmail(to, subject, reportData, attachments = []) {
   try {
+    // Ensure we have a working transporter
+    if (!transporter) {
+      const success = await testEmailConfig();
+      if (!success) {
+        throw new Error('Could not configure email transport');
+      }
+    }
+    
     // Read the email template
     const templatePath = path.join(__dirname, '../templates/report.hbs');
     const templateSource = fs.readFileSync(templatePath, 'utf8');
@@ -47,10 +125,32 @@ async function sendReportEmail(to, subject, reportData, attachments = []) {
     
     // Add the CSS as an embedded style
     const cssPath = path.join(__dirname, '../templates/report-styles.css');
-    const css = fs.readFileSync(cssPath, 'utf8');
+    let css = '';
+    try {
+      css = fs.readFileSync(cssPath, 'utf8');
+    } catch (cssError) {
+      console.warn('Could not read CSS file, using inline styles instead:', cssError.message);
+      // Fallback basic styles
+      css = `
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        h1, h2, h3 { color: #5D5CDE; }
+        .report-container { max-width: 800px; margin: 0 auto; padding: 20px; }
+        .section { margin-bottom: 20px; }
+      `;
+    }
     
     // Embed the CSS in the HTML
     const htmlWithCss = html.replace('</head>', `<style>${css}</style></head>`);
+    
+    // Check for yieldera logo path
+    let logoPath;
+    try {
+      logoPath = path.join(__dirname, '../templates/yieldera-logo.png');
+      fs.accessSync(logoPath, fs.constants.R_OK);
+    } catch (logoError) {
+      console.warn('Logo file not accessible, excluding from email:', logoError.message);
+      logoPath = null;
+    }
     
     // Configure email options
     const mailOptions = {
@@ -60,24 +160,50 @@ async function sendReportEmail(to, subject, reportData, attachments = []) {
       html: htmlWithCss,
       attachments: [
         // Include any provided attachments
-        ...attachments,
-        // Optional: Attach the Yieldera logo
-        {
-          filename: 'yieldera-logo.png',
-          path: path.join(__dirname, '../templates/yieldera-logo.png'),
-          cid: 'yieldera-logo' // Reference this in the HTML as <img src="cid:yieldera-logo">
-        }
+        ...attachments
       ]
     };
     
-    // Send the email
-    const info = await transporter.sendMail(mailOptions);
+    // Add logo attachment if available
+    if (logoPath) {
+      mailOptions.attachments.push({
+        filename: 'yieldera-logo.png',
+        path: logoPath,
+        cid: 'yieldera-logo' // Reference this in the HTML as <img src="cid:yieldera-logo">
+      });
+    }
     
-    console.log(`Email sent: ${info.messageId}`);
-    return {
-      success: true,
-      messageId: info.messageId
-    };
+    // Send the email with retry mechanism
+    let retries = 2;
+    let lastError;
+    
+    while (retries >= 0) {
+      try {
+        const info = await transporter.sendMail(mailOptions);
+        console.log(`Email sent: ${info.messageId}`);
+        return {
+          success: true,
+          messageId: info.messageId
+        };
+      } catch (error) {
+        lastError = error;
+        console.error(`Error sending email (${retries} retries left):`, error);
+        
+        if (retries > 0) {
+          // Wait for 3 seconds before retrying
+          console.log('Retrying email send in 3 seconds...');
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          
+          // Refresh transporter if needed
+          await testEmailConfig();
+        }
+        
+        retries--;
+      }
+    }
+    
+    // If we get here, all retries failed
+    throw lastError || new Error('Failed to send email after multiple attempts');
   } catch (error) {
     console.error('Error sending email:', error);
     return {
@@ -92,6 +218,14 @@ async function sendReportEmail(to, subject, reportData, attachments = []) {
  */
 async function sendTextEmail(to, subject, text) {
   try {
+    // Ensure we have a working transporter
+    if (!transporter) {
+      const success = await testEmailConfig();
+      if (!success) {
+        throw new Error('Could not configure email transport');
+      }
+    }
+    
     const mailOptions = {
       from: `"Yieldera Notifications" <${process.env.EMAIL_USER}>`,
       to: to,
@@ -121,6 +255,14 @@ async function sendTextEmail(to, subject, text) {
 async function sendErrorNotification(subject, errorDetails) {
   try {
     const adminEmail = process.env.ADMIN_EMAIL || 'kudzaimunyukwa@gmail.com';
+    
+    // Ensure we have a working transporter
+    if (!transporter) {
+      const success = await testEmailConfig();
+      if (!success) {
+        throw new Error('Could not configure email transport');
+      }
+    }
     
     const mailOptions = {
       from: `"Yieldera System" <${process.env.EMAIL_USER}>`,
