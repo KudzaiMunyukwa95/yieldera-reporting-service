@@ -1,8 +1,20 @@
+const fs = require('fs');
+const path = require('path');
+const puppeteer = require('puppeteer');
+const Handlebars = require('handlebars');
 const { pool } = require('../config/db');
 const weatherService = require('./weatherService');
 const aiService = require('./aiService');
 const emailService = require('./emailService');
 const marked = require('marked');
+const { mangle } = require('marked-mangle');
+const { gfmHeadingId } = require('marked-gfm-heading-id');
+
+// Configure marked with extensions to fix deprecation warnings
+marked.use(
+  mangle(),
+  gfmHeadingId()
+);
 
 /**
  * Generate and send a report for a field
@@ -15,7 +27,7 @@ async function generateAndSendReport(fieldId) {
       throw new Error(`Field with ID ${fieldId} not found`);
     }
     
-    // Get user data - now using user_id if available
+    // Get user data
     const userData = await getUserData(fieldData);
     if (!userData) {
       throw new Error(`No suitable user found for field ID ${fieldId}`);
@@ -23,7 +35,7 @@ async function generateAndSendReport(fieldId) {
     
     // Get historical weather data
     // Start from 30 days before planting date
-    const plantingDate = new Date(fieldData.planting_date);
+    const plantingDate = new Date(fieldData.planting_date || Date.now());
     const startDate = new Date(plantingDate);
     startDate.setDate(plantingDate.getDate() - 30);
     
@@ -34,7 +46,7 @@ async function generateAndSendReport(fieldId) {
     const formattedStartDate = startDate.toISOString().split('T')[0];
     const formattedEndDate = endDate.toISOString().split('T')[0];
     
-    // Get weather data
+    // Get historical weather data
     const weatherData = await weatherService.getHistoricalWeather(
       fieldData.latitude,
       fieldData.longitude,
@@ -42,14 +54,20 @@ async function generateAndSendReport(fieldId) {
       formattedEndDate
     );
     
-    // Get seasonal forecast
+    // Get weather forecast for next 7 days
+    const forecastEndDate = new Date(endDate);
+    forecastEndDate.setDate(endDate.getDate() + 7);
+    const formattedForecastEndDate = forecastEndDate.toISOString().split('T')[0];
+    
     const forecastData = await weatherService.getSeasonalForecast(
       fieldData.latitude,
-      fieldData.longitude
+      fieldData.longitude,
+      formattedEndDate,
+      formattedForecastEndDate
     );
     
     // Analyze data with AI
-    const aiAnalysis = await aiService.analyzeWithAI(fieldData, weatherData);
+    const aiAnalysis = await aiService.analyzeWithAI(fieldData, weatherData, forecastData);
     
     // Convert markdown analysis to HTML
     const analysisHtml = marked.parse(aiAnalysis.analysis);
@@ -68,11 +86,33 @@ async function generateAndSendReport(fieldId) {
       appUrl: 'https://yieldera.co.zw'
     };
     
+    // Generate PDF report
+    console.log("Generating PDF report...");
+    let pdfBuffer;
+    try {
+      pdfBuffer = await generatePdfReport(reportData);
+      console.log("PDF report generated successfully");
+    } catch (pdfError) {
+      console.error("Error generating PDF report:", pdfError);
+      // Continue without PDF if it fails
+    }
+    
+    // Prepare attachments
+    const attachments = [];
+    if (pdfBuffer) {
+      attachments.push({
+        filename: `Yieldera_Report_${fieldId}.pdf`,
+        content: pdfBuffer,
+        contentType: 'application/pdf'
+      });
+    }
+    
     // Send email report
     const emailResult = await emailService.sendReportEmail(
       userData.email,
       `Yieldera Field Report: ${fieldData.farm_name || 'Your Field'} - ${fieldData.crop_type || 'Crop'}`,
-      reportData
+      reportData,
+      attachments
     );
     
     // Log report generation
@@ -81,7 +121,8 @@ async function generateAndSendReport(fieldId) {
     return {
       success: true,
       message: `Report generated and sent to ${userData.email}`,
-      emailResult
+      emailResult,
+      hasPdf: !!pdfBuffer
     };
   } catch (error) {
     console.error('Error generating report:', error);
@@ -89,6 +130,57 @@ async function generateAndSendReport(fieldId) {
       success: false,
       message: `Failed to generate report: ${error.message}`
     };
+  }
+}
+
+/**
+ * Generate PDF report
+ */
+async function generatePdfReport(reportData) {
+  try {
+    // Read the Handlebars template
+    const templatePath = path.join(__dirname, '../templates/report.hbs');
+    const templateSource = fs.readFileSync(templatePath, 'utf8');
+    
+    // Compile the template
+    const template = Handlebars.compile(templateSource);
+    
+    // Generate the HTML with the report data
+    const html = template(reportData);
+    
+    // Launch a headless browser
+    const browser = await puppeteer.launch({
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      headless: true
+    });
+    
+    // Create a new page
+    const page = await browser.newPage();
+    
+    // Set the HTML content
+    await page.setContent(html, {
+      waitUntil: 'networkidle0'
+    });
+    
+    // Generate PDF
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: {
+        top: '20px',
+        right: '20px',
+        bottom: '20px',
+        left: '20px'
+      }
+    });
+    
+    // Close the browser
+    await browser.close();
+    
+    return pdfBuffer;
+  } catch (error) {
+    console.error('Error generating PDF report:', error);
+    throw error;
   }
 }
 
@@ -209,5 +301,6 @@ async function logReportGeneration(fieldId, userId, success) {
 }
 
 module.exports = {
-  generateAndSendReport
+  generateAndSendReport,
+  generatePdfReport
 };
