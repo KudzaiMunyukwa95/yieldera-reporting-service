@@ -1,6 +1,5 @@
 const fs = require('fs');
 const path = require('path');
-const puppeteerCore = require('puppeteer-core');
 const Handlebars = require('handlebars');
 const { pool } = require('../config/db');
 const weatherService = require('./weatherService');
@@ -83,36 +82,18 @@ async function generateAndSendReport(fieldId) {
       analysis: analysisHtml,
       analysisSource: aiAnalysis.source,
       reportDate: new Date().toLocaleDateString(),
-      appUrl: 'https://yieldera.co.zw'
+      appUrl: 'https://yieldera.co.zw',
+      fieldSummary: aiAnalysis.fieldSummary || '',
+      weatherSummary: aiAnalysis.weatherSummary || '',
+      locationName: aiAnalysis.locationName || ''
     };
     
-    // Generate PDF report
-    console.log("Generating PDF report...");
-    let pdfBuffer;
-    try {
-      pdfBuffer = await generatePdfReport(reportData);
-      console.log("PDF report generated successfully");
-    } catch (pdfError) {
-      console.error("Error generating PDF report:", pdfError);
-      // Continue without PDF if it fails
-    }
-    
-    // Prepare attachments
-    const attachments = [];
-    if (pdfBuffer) {
-      attachments.push({
-        filename: `Yieldera_Report_${fieldId}.pdf`,
-        content: pdfBuffer,
-        contentType: 'application/pdf'
-      });
-    }
-    
-    // Send email report
+    // Send email report (without PDF)
     const emailResult = await emailService.sendReportEmail(
       userData.email,
       `Yieldera Field Report: ${fieldData.farm_name || 'Your Field'} - ${fieldData.crop_type || 'Crop'}`,
       reportData,
-      attachments
+      [] // No attachments
     );
     
     // Log report generation
@@ -121,8 +102,7 @@ async function generateAndSendReport(fieldId) {
     return {
       success: true,
       message: `Report generated and sent to ${userData.email}`,
-      emailResult,
-      hasPdf: !!pdfBuffer
+      emailResult
     };
   } catch (error) {
     console.error('Error generating report:', error);
@@ -130,148 +110,6 @@ async function generateAndSendReport(fieldId) {
       success: false,
       message: `Failed to generate report: ${error.message}`
     };
-  }
-}
-
-/**
- * Generate PDF report using puppeteer-core
- */
-async function generatePdfReport(reportData) {
-  let browser = null;
-  
-  try {
-    // Read the Handlebars template
-    const templatePath = path.join(__dirname, '../templates/report.hbs');
-    const templateSource = fs.readFileSync(templatePath, 'utf8');
-    
-    // Compile the template
-    const template = Handlebars.compile(templateSource);
-    
-    // Generate the HTML with the report data
-    const html = template(reportData);
-    
-    // Try various Chrome executable paths that might be available on Render
-    const possibleChromePaths = [
-      '/usr/bin/google-chrome',
-      '/usr/bin/chromium-browser',
-      '/usr/bin/chromium',
-      '/opt/google/chrome/chrome'
-    ];
-    
-    let launchOptions = {
-      headless: 'new',
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process',
-        '--disable-gpu'
-      ]
-    };
-    
-    // Try each possible Chrome path
-    let chromePath = null;
-    for (const path of possibleChromePaths) {
-      try {
-        if (fs.existsSync(path)) {
-          chromePath = path;
-          break;
-        }
-      } catch (err) {
-        // Continue to next path
-      }
-    }
-    
-    if (chromePath) {
-      console.log(`Found Chrome at: ${chromePath}`);
-      launchOptions.executablePath = chromePath;
-    } else {
-      console.warn("Could not find Chrome installation. Attempting to use default.");
-      // Fall back to environment variable if set
-      if (process.env.CHROME_PATH) {
-        launchOptions.executablePath = process.env.CHROME_PATH;
-      }
-    }
-    
-    // Launch browser
-    console.log("Launching browser with options:", JSON.stringify(launchOptions));
-    browser = await puppeteerCore.launch(launchOptions);
-    
-    // Create a new page
-    const page = await browser.newPage();
-    
-    // Set the HTML content
-    await page.setContent(html, {
-      waitUntil: 'networkidle0'
-    });
-    
-    // Generate PDF
-    const pdfBuffer = await page.pdf({
-      format: 'A4',
-      printBackground: true,
-      margin: {
-        top: '20px',
-        right: '20px',
-        bottom: '20px',
-        left: '20px'
-      }
-    });
-    
-    // Close the browser
-    if (browser) {
-      await browser.close();
-    }
-    
-    return pdfBuffer;
-  } catch (error) {
-    console.error('Error generating PDF report:', error);
-    
-    // Make sure to close browser on error
-    if (browser) {
-      try {
-        await browser.close();
-      } catch (closeError) {
-        console.error('Error closing browser:', closeError);
-      }
-    }
-    
-    // Try alternative PDF generation without Puppeteer
-    return await generateAlternativePdfReport(reportData);
-  }
-}
-
-/**
- * Alternative PDF generation method as fallback
- */
-async function generateAlternativePdfReport(reportData) {
-  try {
-    // This is a placeholder for a simpler PDF generation method
-    // For example, you could use pdfkit, html-pdf-node, or another lighter library
-    console.log("Using alternative PDF generation method");
-    
-    // For now, we'll create a very simple text representation as a fallback
-    const text = `
-YIELDERA FIELD REPORT
-
-Field: ${reportData.field.farm_name || 'Unnamed field'}
-Crop: ${reportData.field.crop_type || 'Not specified'}
-Date: ${reportData.reportDate}
-
-*** THIS IS A SIMPLIFIED FALLBACK REPORT DUE TO PDF GENERATION LIMITATIONS ***
-
-Please view the full report in the email body or contact support for assistance.
-    `;
-    
-    // Convert the simple text to a PDF buffer
-    // This is oversimplified and just returns a text buffer instead of PDF
-    // In a real implementation, you would use a lightweight PDF library here
-    return Buffer.from(text);
-  } catch (altError) {
-    console.error('Alternative PDF generation also failed:', altError);
-    throw new Error('PDF generation not available in this environment');
   }
 }
 
@@ -392,6 +230,5 @@ async function logReportGeneration(fieldId, userId, success) {
 }
 
 module.exports = {
-  generateAndSendReport,
-  generatePdfReport
+  generateAndSendReport
 };
