@@ -5,18 +5,44 @@ require('dotenv').config();
 let huggingFaceApiKey = process.env.HUGGINGFACE_API_KEY;
 
 /**
- * Analyzes field data with Hugging Face
+ * Analyzes field data with AI
  */
 async function analyzeWithAI(fieldData, weatherData) {
-  if (!huggingFaceApiKey) {
+  // Try multiple AI approaches in sequence
+  try {
+    // First attempt: Try Hugging Face Mistral model
+    if (huggingFaceApiKey) {
+      try {
+        console.log("Attempting analysis with Hugging Face Mistral...");
+        return await analyzeMistral(fieldData, weatherData);
+      } catch (error) {
+        console.log("Mistral analysis failed, trying alternative model...");
+        // If Mistral fails, try another model
+        try {
+          return await analyzeAlternativeModel(fieldData, weatherData);
+        } catch (alternativeError) {
+          console.log("Alternative model failed, falling back to rule-based...");
+          throw new Error("AI models unavailable");
+        }
+      }
+    } else {
+      console.log("No Hugging Face API key found, using rule-based analysis");
+      return alternativeAnalysis(fieldData, weatherData);
+    }
+  } catch (error) {
+    console.log("All AI approaches failed, using rule-based analysis");
     return alternativeAnalysis(fieldData, weatherData);
   }
+}
+
+/**
+ * Analyze using Mistral model
+ */
+async function analyzeMistral(fieldData, weatherData) {
+  const prompt = generatePrompt(fieldData, weatherData);
   
-  try {
-    const prompt = generatePrompt(fieldData, weatherData);
-    
-    // Format prompt for Mistral model
-    const formattedPrompt = `<s>[INST] You are an expert agricultural analyst with deep knowledge of farming in Zimbabwe. Provide practical, actionable advice for farmers based on the following field and weather data:
+  // Format prompt for Mistral model
+  const formattedPrompt = `<s>[INST] You are an expert agricultural analyst with deep knowledge of farming in Zimbabwe. Provide practical, actionable advice for farmers based on the following field and weather data:
 
 ${prompt}
 
@@ -27,50 +53,104 @@ Please provide:
 4. Opportunities for optimizing yield and quality
 
 Focus on practical, actionable advice specific to farming in Zimbabwe. [/INST]</s>`;
-    
-    const response = await axios.post(
-      "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2",
-      {
-        inputs: formattedPrompt,
-        parameters: {
-          max_new_tokens: 1024,
-          temperature: 0.7,
-          return_full_text: false
-        }
-      },
-      {
-        headers: {
-          "Authorization": `Bearer ${huggingFaceApiKey}`,
-          "Content-Type": "application/json"
-        }
+  
+  const response = await axios.post(
+    "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2",
+    {
+      inputs: formattedPrompt,
+      parameters: {
+        max_new_tokens: 1024,
+        temperature: 0.7,
+        return_full_text: false
       }
-    );
-
-    // Extract the generated text
-    let analysis = '';
-    if (response.data && Array.isArray(response.data)) {
-      analysis = response.data[0].generated_text;
-    } else if (response.data && response.data.generated_text) {
-      analysis = response.data.generated_text;
-    } else {
-      throw new Error('Unexpected response format from Hugging Face API');
+    },
+    {
+      headers: {
+        "Authorization": `Bearer ${huggingFaceApiKey}`,
+        "Content-Type": "application/json"
+      }
     }
+  );
 
-    // Format the analysis into Markdown sections if it's not already
-    if (!analysis.includes('#') && !analysis.includes('###')) {
-      analysis = formatAnalysisToMarkdown(analysis);
-    }
-
-    return {
-      success: true,
-      analysis: analysis,
-      source: "huggingface"
-    };
-  } catch (error) {
-    console.error('Hugging Face API error:', error.message);
-    // Fallback to alternative analysis if Hugging Face fails
-    return alternativeAnalysis(fieldData, weatherData);
+  // Extract the generated text
+  let analysis = '';
+  if (response.data && Array.isArray(response.data)) {
+    analysis = response.data[0].generated_text;
+  } else if (response.data && response.data.generated_text) {
+    analysis = response.data.generated_text;
+  } else {
+    throw new Error('Unexpected response format from Hugging Face API');
   }
+
+  // Format the analysis into Markdown sections if it's not already
+  if (!analysis.includes('#') && !analysis.includes('###')) {
+    analysis = formatAnalysisToMarkdown(analysis);
+  }
+
+  return {
+    success: true,
+    analysis: analysis,
+    source: "huggingface-mistral"
+  };
+}
+
+/**
+ * Analyze using an alternative model (different endpoint)
+ */
+async function analyzeAlternativeModel(fieldData, weatherData) {
+  const prompt = generatePrompt(fieldData, weatherData);
+  
+  // Try a different model - Llama 2 is more widely available
+  const formattedPrompt = `<s>[INST] You are an agricultural expert specializing in farming in Zimbabwe. 
+Based on the following field and weather data, provide useful advice for the farmer:
+
+${prompt}
+
+Include: 
+- Current field condition analysis
+- Crop management recommendations
+- Potential risks
+- Yield optimization tips
+[/INST]</s>`;
+
+  const response = await axios.post(
+    "https://api-inference.huggingface.co/models/meta-llama/Llama-2-7b-chat-hf",
+    {
+      inputs: formattedPrompt,
+      parameters: {
+        max_new_tokens: 1024,
+        temperature: 0.7,
+        return_full_text: false
+      }
+    },
+    {
+      headers: {
+        "Authorization": `Bearer ${huggingFaceApiKey}`,
+        "Content-Type": "application/json"
+      }
+    }
+  );
+
+  // Extract the generated text
+  let analysis = '';
+  if (response.data && Array.isArray(response.data)) {
+    analysis = response.data[0].generated_text;
+  } else if (response.data && response.data.generated_text) {
+    analysis = response.data.generated_text;
+  } else {
+    throw new Error('Unexpected response format from Hugging Face API');
+  }
+
+  // Format the analysis into Markdown sections
+  if (!analysis.includes('#') && !analysis.includes('###')) {
+    analysis = formatAnalysisToMarkdown(analysis);
+  }
+
+  return {
+    success: true,
+    analysis: analysis,
+    source: "huggingface-llama"
+  };
 }
 
 /**
@@ -138,7 +218,7 @@ function alternativeAnalysis(fieldData, weatherData) {
   
   // Create analysis object
   const analysis = {
-    summary: `Analysis for ${field_size}ha of ${crop_type} planted on ${planting_date}`,
+    summary: `Analysis for ${field_size}ha of ${crop_type || 'crops'} planted on ${planting_date || 'unknown date'}`,
     recommendations: [],
     risks: [],
     opportunities: []
@@ -149,33 +229,37 @@ function alternativeAnalysis(fieldData, weatherData) {
   
   // Crop-specific analysis
   let cropAnalysis;
-  switch (crop_type.toLowerCase()) {
-    case 'maize':
-      cropAnalysis = analyzeMaize(fieldData, weatherData);
-      break;
-    case 'wheat':
-      cropAnalysis = analyzeWheat(fieldData, weatherData);
-      break;
-    case 'soybean':
-      cropAnalysis = analyzeSoybean(fieldData, weatherData);
-      break;
-    case 'cotton':
-      cropAnalysis = analyzeCotton(fieldData, weatherData);
-      break;
-    case 'tobacco':
-      cropAnalysis = analyzeTobacco(fieldData, weatherData);
-      break;
-    case 'groundnut':
-      cropAnalysis = analyzeGroundnut(fieldData, weatherData);
-      break;
-    case 'sunflower':
-      cropAnalysis = analyzeSunflower(fieldData, weatherData);
-      break;
-    case 'sorghum':
-      cropAnalysis = analyzeSorghum(fieldData, weatherData);
-      break;
-    default:
-      cropAnalysis = generalCropAnalysis(fieldData, weatherData);
+  if (!crop_type) {
+    cropAnalysis = generalCropAnalysis(fieldData, weatherData);
+  } else {
+    switch (crop_type.toLowerCase()) {
+      case 'maize':
+        cropAnalysis = analyzeMaize(fieldData, weatherData);
+        break;
+      case 'wheat':
+        cropAnalysis = analyzeWheat(fieldData, weatherData);
+        break;
+      case 'soybean':
+        cropAnalysis = analyzeSoybean(fieldData, weatherData);
+        break;
+      case 'cotton':
+        cropAnalysis = analyzeCotton(fieldData, weatherData);
+        break;
+      case 'tobacco':
+        cropAnalysis = analyzeTobacco(fieldData, weatherData);
+        break;
+      case 'groundnut':
+        cropAnalysis = analyzeGroundnut(fieldData, weatherData);
+        break;
+      case 'sunflower':
+        cropAnalysis = analyzeSunflower(fieldData, weatherData);
+        break;
+      case 'sorghum':
+        cropAnalysis = analyzeSorghum(fieldData, weatherData);
+        break;
+      default:
+        cropAnalysis = generalCropAnalysis(fieldData, weatherData);
+    }
   }
   
   // Combine analyses
@@ -207,7 +291,7 @@ function analyzeWeather(weatherData, cropType) {
   summary += `Total rainfall: ${totalRain.toFixed(1)}mm. `;
   
   // Very simple crop-specific weather analysis
-  if (cropType.toLowerCase() === 'maize') {
+  if (cropType && cropType.toLowerCase() === 'maize') {
     if (avgTemp > 30) {
       summary += "Temperatures are higher than optimal for maize development.";
     } else if (avgTemp < 18) {
@@ -221,7 +305,7 @@ function analyzeWeather(weatherData, cropType) {
     } else if (totalRain > 50) {
       summary += " Heavy rainfall may cause waterlogging. Ensure proper drainage.";
     }
-  } else if (cropType.toLowerCase() === 'cotton') {
+  } else if (cropType && cropType.toLowerCase() === 'cotton') {
     if (avgTemp > 35) {
       summary += "Temperatures are too high for optimal cotton development. Consider additional irrigation.";
     } else if (avgTemp < 15) {
@@ -489,13 +573,13 @@ function formatAnalysis(analysis) {
 function generatePrompt(fieldData, weatherData) {
   return `
 Field Information:
-- Crop Type: ${fieldData.crop_type}
+- Crop Type: ${fieldData.crop_type || 'Not specified'}
 - Variety: ${fieldData.variety || 'Not specified'}
-- Field Size: ${fieldData.field_size} hectares
+- Field Size: ${fieldData.field_size || 'Not specified'} hectares
 - Soil Type: ${fieldData.soil_type || 'Not specified'}
-- Planting Date: ${fieldData.planting_date}
+- Planting Date: ${fieldData.planting_date || 'Not specified'}
 - Current Growth Stage: ${fieldData.growth_stage || 'Not specified'}
-- Location: Latitude ${fieldData.latitude}, Longitude ${fieldData.longitude}
+- Location: Latitude ${fieldData.latitude || 'Not specified'}, Longitude ${fieldData.longitude || 'Not specified'}
 
 Field Health:
 - Pest Infestation: ${fieldData.pest_infestation || 'Not specified'}
@@ -514,10 +598,16 @@ ${weatherData && weatherData.daily ? `
 
 // Helper functions
 function average(arr) {
+  if (!arr || !Array.isArray(arr) || arr.length === 0) {
+    return 0;
+  }
   return arr.reduce((sum, val) => sum + val, 0) / arr.length;
 }
 
 function sum(arr) {
+  if (!arr || !Array.isArray(arr) || arr.length === 0) {
+    return 0;
+  }
   return arr.reduce((sum, val) => sum + val, 0);
 }
 
