@@ -277,14 +277,15 @@ class ReportService {
     }
 
     prompt += `\n**RECOMMENDATION REQUEST:**\n`;
-    prompt += `Provide specific, actionable recommendations for:\n`;
-    prompt += `1. **FARMERS:** Immediate field management actions, timing of operations, input requirements\n`;
-    prompt += `2. **INSURERS:** Risk mitigation strategies, monitoring requirements, claim prevention measures\n`;
-    prompt += `3. **BANKS/FINANCIERS:** Investment priorities, cash flow considerations, loan security factors\n`;
-    prompt += `4. **CONTRACTORS:** Service requirements, equipment needs, timing of operations\n`;
-    prompt += `5. **GENERAL:** Best practices for optimizing yield and reducing risks\n\n`;
+    prompt += `Provide specific, actionable recommendations that apply to all agricultural stakeholders (farmers, insurers, banks, contractors):\n`;
+    prompt += `1. **IMMEDIATE ACTIONS:** What needs to be done in the next 1-7 days\n`;
+    prompt += `2. **SHORT-TERM MANAGEMENT:** Actions needed in the next 2-4 weeks\n`;
+    prompt += `3. **RISK MITIGATION:** Key risks and how to address them\n`;
+    prompt += `4. **YIELD OPTIMIZATION:** Steps to maximize yield potential\n`;
+    prompt += `5. **MONITORING REQUIREMENTS:** What to watch for going forward\n\n`;
     prompt += `Include specific timelines where applicable and prioritize recommendations by urgency. `;
-    prompt += `Focus on crop-specific advice for ${field.crop_type}. Avoid generic farming advice.`;
+    prompt += `Focus on crop-specific advice for ${field.crop_type}. Avoid generic farming advice. `;
+    prompt += `Make recommendations actionable for all stakeholders without separating by stakeholder type.`;
 
     return prompt;
   }
