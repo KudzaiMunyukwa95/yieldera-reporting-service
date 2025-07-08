@@ -352,7 +352,11 @@ class ReportService {
         ...fieldDetails,
         field_size: Math.round((fieldDetails.field_size || 0) * 10) / 10,
         planting_date: fieldDetails.planting_date ? moment(fieldDetails.planting_date).format('MMMM Do, YYYY') : null,
-        expected_harvest_date: fieldDetails.expected_harvest_date ? moment(fieldDetails.expected_harvest_date).format('MMMM Do, YYYY') : null
+        expected_harvest_date: fieldDetails.expected_harvest_date ? moment(fieldDetails.expected_harvest_date).format('MMMM Do, YYYY') : null,
+        latitude: fieldDetails.latitude ? Math.round(fieldDetails.latitude * 1000000) / 1000000 : null,
+        longitude: fieldDetails.longitude ? Math.round(fieldDetails.longitude * 1000000) / 1000000 : null,
+        accuracy: fieldDetails.accuracy ? Math.round(fieldDetails.accuracy * 10) / 10 : null,
+        captureDate: fieldDetails.created_at ? moment(fieldDetails.created_at).format('MMMM Do, YYYY [at] h:mm A') : null
       },
 
       // Yieldera Engine generated content
