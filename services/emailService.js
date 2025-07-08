@@ -48,6 +48,25 @@ class EmailService {
   }
 
   generateReportHTML(data) {
+    // Register Handlebars helpers before using the template
+    handlebars.registerHelper('eq', function(a, b) {
+      return a === b;
+    });
+
+    handlebars.registerHelper('or', function() {
+      // Convert arguments to array and check if any are truthy
+      const args = Array.prototype.slice.call(arguments, 0, -1); // Remove options object
+      return args.some(arg => !!arg);
+    });
+
+    handlebars.registerHelper('if', function(conditional, options) {
+      if (conditional) {
+        return options.fn(this);
+      } else {
+        return options.inverse(this);
+      }
+    });
+
     const template = `
 <!DOCTYPE html>
 <html lang="en">
@@ -355,7 +374,7 @@ class EmailService {
 
             {{#if weather.agronomicInsights.insights}}
             {{#each weather.agronomicInsights.insights}}
-            <div class="alert alert-{{#if (eq type 'warning')}}warning{{else if (eq type 'positive')}}success{{else}}info{{/if}}">
+            <div class="alert alert-info">
                 <strong>{{category}}:</strong> {{message}}
             </div>
             {{/each}}
@@ -395,23 +414,19 @@ class EmailService {
                     </div>
                     {{/if}}
                 </div>
-                {{#if (or fields_with_losses pest_affected_fields disease_affected_fields)}}
-                <div style="margin-top: 15px;">
-                    {{#if fields_with_losses}}
-                    <div class="alert alert-warning">
-                        <strong>⚠️ Risk Alert:</strong> {{fields_with_losses}} of {{field_count}} fields have reported losses this season.
-                    </div>
-                    {{/if}}
-                    {{#if pest_affected_fields}}
-                    <div class="alert alert-warning">
-                        <strong>🐛 Pest Alert:</strong> {{pest_affected_fields}} fields showing pest infestation.
-                    </div>
-                    {{/if}}
-                    {{#if disease_affected_fields}}
-                    <div class="alert alert-warning">
-                        <strong>🦠 Disease Alert:</strong> {{disease_affected_fields}} fields showing disease symptoms.
-                    </div>
-                    {{/if}}
+                {{#if fields_with_losses}}
+                <div class="alert alert-warning">
+                    <strong>⚠️ Risk Alert:</strong> {{fields_with_losses}} of {{field_count}} fields have reported losses this season.
+                </div>
+                {{/if}}
+                {{#if pest_affected_fields}}
+                <div class="alert alert-warning">
+                    <strong>🐛 Pest Alert:</strong> {{pest_affected_fields}} fields showing pest infestation.
+                </div>
+                {{/if}}
+                {{#if disease_affected_fields}}
+                <div class="alert alert-warning">
+                    <strong>🦠 Disease Alert:</strong> {{disease_affected_fields}} fields showing disease symptoms.
                 </div>
                 {{/if}}
             </div>
@@ -477,23 +492,26 @@ class EmailService {
         {{/if}}
 
         <!-- Recommendations -->
-        {{#if (or weather.agronomicInsights.recommendations aiRecommendations)}}
+        {{#if weather.agronomicInsights.recommendations}}
         <div class="section">
-            <h2>💡 Recommendations & Action Items</h2>
+            <h2>💡 Weather-Based Recommendations</h2>
             <div class="recommendations">
-                {{#if weather.agronomicInsights.recommendations}}
                 <h4 style="color: #f39c12; margin-bottom: 15px;">🌤️ Weather-Based Recommendations</h4>
                 {{#each weather.agronomicInsights.recommendations}}
                 <div class="recommendation-item">{{this}}</div>
                 {{/each}}
-                {{/if}}
+            </div>
+        </div>
+        {{/if}}
 
-                {{#if aiRecommendations}}
-                <h4 style="color: #f39c12; margin-bottom: 15px; margin-top: 25px;">🤖 AI-Generated Recommendations</h4>
+        {{#if aiRecommendations}}
+        <div class="section">
+            <h2>💡 AI-Generated Recommendations</h2>
+            <div class="recommendations">
+                <h4 style="color: #f39c12; margin-bottom: 15px;">🤖 AI-Generated Recommendations</h4>
                 <div style="background: white; padding: 15px; border-radius: 6px;">
                     {{{aiRecommendations}}}
                 </div>
-                {{/if}}
             </div>
         </div>
         {{/if}}
@@ -559,10 +577,6 @@ class EmailService {
 </html>`;
 
     // Register Handlebars helper for equality comparison
-    handlebars.registerHelper('eq', function(a, b) {
-      return a === b;
-    });
-
     const compiledTemplate = handlebars.compile(template);
     return compiledTemplate(data);
   }
