@@ -82,13 +82,13 @@ class WeatherService {
           windDirection: current.wind_direction_10m,
           description: this.getWeatherDescription(current.weather_code)
         },
-        forecast: daily.time.map((date, index) => ({
-          date: date,
-          tempMax: daily.temperature_2m_max[index],
-          tempMin: daily.temperature_2m_min[index],
-          precipitation: daily.precipitation_sum[index],
+        forecast: daily.time.slice(0, 7).map((date, index) => ({
+          date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+          tempMax: daily.temperature_2m_max[index] ? Math.round(daily.temperature_2m_max[index]) : '-',
+          tempMin: daily.temperature_2m_min[index] ? Math.round(daily.temperature_2m_min[index]) : '-',
+          precipitation: daily.precipitation_sum[index] ? Math.round(daily.precipitation_sum[index] * 10) / 10 : '0',
           weatherCode: daily.weather_code[index],
-          windSpeed: daily.wind_speed_10m_max[index],
+          windSpeed: daily.wind_speed_10m_max[index] ? Math.round(daily.wind_speed_10m_max[index]) : '-',
           sunrise: daily.sunrise[index],
           sunset: daily.sunset[index],
           description: this.getWeatherDescription(daily.weather_code[index])
@@ -105,13 +105,13 @@ class WeatherService {
       const daily = data.daily;
       
       return daily.time.map((date, index) => ({
-        date: date,
-        tempMax: daily.temperature_2m_max[index],
-        tempMin: daily.temperature_2m_min[index],
-        precipitation: daily.precipitation_sum[index],
+        date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        tempMax: daily.temperature_2m_max[index] ? Math.round(daily.temperature_2m_max[index]) : '-',
+        tempMin: daily.temperature_2m_min[index] ? Math.round(daily.temperature_2m_min[index]) : '-',
+        precipitation: daily.precipitation_sum[index] ? Math.round(daily.precipitation_sum[index] * 10) / 10 : '0',
         weatherCode: daily.weather_code[index],
         description: this.getWeatherDescription(daily.weather_code[index])
-      }));
+      })).slice(-7); // Get last 7 days
     } catch (error) {
       console.error('Error formatting historical weather:', error);
       return this.getDefaultHistoricalData();
