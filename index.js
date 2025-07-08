@@ -103,10 +103,30 @@ async function processReports() {
   }
 }
 
-// Manual trigger endpoint for testing
+// Manual trigger endpoint for testing (accepts both GET and POST)
+app.get('/trigger-reports', async (req, res) => {
+  try {
+    console.log('📧 Manual report trigger initiated via GET...');
+    const result = await reportService.processPendingReports();
+    
+    res.status(200).json({
+      success: true,
+      message: `Processed ${result.processed} reports`,
+      errors: result.errors,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Manual trigger error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
 app.post('/trigger-reports', async (req, res) => {
   try {
-    console.log('📧 Manual report trigger initiated...');
+    console.log('📧 Manual report trigger initiated via POST...');
     const result = await reportService.processPendingReports();
     
     res.status(200).json({
