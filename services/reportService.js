@@ -122,7 +122,7 @@ class ReportService {
         messages: [
           {
             role: "system",
-            content: "You are an expert agricultural consultant with deep knowledge in agronomy, crop science, and sustainable farming practices. Provide detailed, actionable insights based on field data and weather conditions. Focus on practical recommendations that add value to farmers, insurers, banks, and agricultural contractors."
+            content: "You are the Yieldera Engine, an expert agricultural consultant with deep knowledge in agronomy, crop science, and sustainable farming practices. Provide detailed, actionable insights based on field data and weather conditions. Focus on practical recommendations that add value to farmers, insurers, banks, and agricultural contractors. Never refer to yourself as AI - you are the Yieldera agricultural intelligence system."
           },
           {
             role: "user",
@@ -135,8 +135,8 @@ class ReportService {
 
       return response.choices[0].message.content;
     } catch (error) {
-      console.error('❌ Error generating AI analysis:', error);
-      return `Analysis temporarily unavailable due to AI service limitations. Field assessment shows ${fieldDetails.crop_type} crop in ${fieldDetails.current_growth_stage || 'active'} stage on ${fieldDetails.field_size} hectares.`;
+      console.error('❌ Error generating Yieldera Engine analysis:', error);
+      return `Yieldera Engine analysis temporarily unavailable. Field assessment shows ${fieldDetails.crop_type} crop${fieldDetails.current_growth_stage ? ` in ${fieldDetails.current_growth_stage} stage` : ''} on ${fieldDetails.field_size} hectares.`;
     }
   }
 
@@ -149,7 +149,7 @@ class ReportService {
         messages: [
           {
             role: "system",
-            content: "You are an expert agricultural advisor providing strategic recommendations for farm management. Consider the specific needs of different stakeholders including farmers (operational guidance), insurers (risk assessment), banks (financial viability), and contractors (service requirements). Provide specific, actionable recommendations with clear timelines where applicable."
+            content: "You are the Yieldera Engine providing strategic recommendations for farm management. Consider the specific needs of different agricultural stakeholders including farmers (operational guidance), insurers (risk assessment), banks (financial viability), and contractors (service requirements). Provide specific, actionable recommendations with clear timelines where applicable. Never refer to yourself as AI - you are the Yieldera agricultural intelligence system."
           },
           {
             role: "user",
@@ -162,8 +162,8 @@ class ReportService {
 
       return response.choices[0].message.content;
     } catch (error) {
-      console.error('❌ Error generating AI recommendations:', error);
-      return "Detailed recommendations temporarily unavailable. Please monitor crop development and weather conditions closely, and consider consultation with local agricultural extension services.";
+      console.error('❌ Error generating Yieldera Engine recommendations:', error);
+      return "Yieldera Engine recommendations temporarily unavailable. Please monitor crop development and weather conditions closely, and consider consultation with local agricultural extension services.";
     }
   }
 
@@ -176,7 +176,14 @@ class ReportService {
     prompt += `- Size: ${field.field_size} hectares\n`;
     prompt += `- Soil Type: ${field.soil_type || 'Not specified'}\n`;
     prompt += `- Planting Date: ${field.planting_date || 'Not specified'}\n`;
-    prompt += `- Growth Stage: ${field.current_growth_stage || 'Not specified'}\n`;
+    
+    // Handle missing growth stage specifically
+    if (field.current_growth_stage) {
+      prompt += `- Growth Stage: ${field.current_growth_stage}\n`;
+    } else {
+      prompt += `- Growth Stage: Not captured during field visit (data collection gap)\n`;
+    }
+    
     prompt += `- Irrigation: ${field.irrigation_method_enhanced || 'Not specified'}\n`;
     
     if (field.basal_fertilizer === 'Yes') {
@@ -205,19 +212,29 @@ class ReportService {
       prompt += `\n**RECENT WEATHER CONDITIONS:**\n`;
       prompt += `- 7-day rainfall: ${weather.analysis.last7Days.totalRainfall || 0}mm\n`;
       prompt += `- Temperature range: ${weather.analysis.last7Days.lowestTemp || 'N/A'}°C to ${weather.analysis.last7Days.highestTemp || 'N/A'}°C\n`;
-      prompt += `- Current conditions: ${weather.current?.current?.description || 'N/A'}\n`;
+      prompt += `- Weather trend: ${weather.current?.current?.description || 'Variable conditions'}\n`;
     }
 
     prompt += `\n**ASSESSMENT TRIGGER:** This assessment was triggered by: ${this.getTriggerDescription(triggerType)}\n`;
 
     prompt += `\n**ANALYSIS REQUEST:**\n`;
-    prompt += `Please provide a comprehensive agronomic analysis considering:\n`;
-    prompt += `1. Current crop development status and expected performance\n`;
-    prompt += `2. Risk assessment based on field conditions and weather patterns\n`;
-    prompt += `3. Critical factors affecting yield potential\n`;
-    prompt += `4. Immediate attention items or concerns\n`;
-    prompt += `5. Crop-specific considerations for ${field.crop_type}\n\n`;
-    prompt += `Format your response in clear, professional language suitable for farmers, agricultural contractors, insurers, and banks.`;
+    prompt += `Please provide a focused agronomic analysis for ${field.crop_type} specifically, considering:\n`;
+    prompt += `1. Current ${field.crop_type} development status based on planting date and conditions\n`;
+    
+    // Handle missing growth stage in prompt
+    if (!field.current_growth_stage) {
+      prompt += `2. Note that growth stage was not captured during field visit - this is a data collection gap that should be addressed\n`;
+      prompt += `3. Risk assessment for ${field.crop_type} based on field conditions and weather patterns\n`;
+      prompt += `4. Critical ${field.crop_type}-specific factors affecting yield potential\n`;
+      prompt += `5. Immediate recommendations specific to ${field.crop_type} management\n\n`;
+    } else {
+      prompt += `2. Risk assessment for ${field.crop_type} based on current ${field.current_growth_stage} stage and weather\n`;
+      prompt += `3. Critical ${field.crop_type}-specific factors affecting yield potential at ${field.current_growth_stage} stage\n`;
+      prompt += `4. Stage-specific recommendations for ${field.crop_type} management\n\n`;
+    }
+    
+    prompt += `Keep your analysis focused on ${field.crop_type} crop specifics. Avoid generic farming advice.`;
+    prompt += `Format your response in clear, professional language suitable for agricultural stakeholders.`;
 
     return prompt;
   }
@@ -232,7 +249,13 @@ class ReportService {
     
     prompt += `\n**FOCUS FIELD:**\n`;
     prompt += `- ${field.field_name}: ${field.crop_type} (${field.field_size} ha)\n`;
-    prompt += `- Current stage: ${field.current_growth_stage || 'Not specified'}\n`;
+    
+    // Handle missing growth stage
+    if (field.current_growth_stage) {
+      prompt += `- Current stage: ${field.current_growth_stage}\n`;
+    } else {
+      prompt += `- Current stage: Not captured during field visit\n`;
+    }
     
     // Weather insights
     if (weather && weather.agronomicInsights && weather.agronomicInsights.insights.length > 0) {
@@ -260,7 +283,8 @@ class ReportService {
     prompt += `3. **BANKS/FINANCIERS:** Investment priorities, cash flow considerations, loan security factors\n`;
     prompt += `4. **CONTRACTORS:** Service requirements, equipment needs, timing of operations\n`;
     prompt += `5. **GENERAL:** Best practices for optimizing yield and reducing risks\n\n`;
-    prompt += `Include specific timelines where applicable and prioritize recommendations by urgency. Consider the current season and crop growth stages.`;
+    prompt += `Include specific timelines where applicable and prioritize recommendations by urgency. `;
+    prompt += `Focus on crop-specific advice for ${field.crop_type}. Avoid generic farming advice.`;
 
     return prompt;
   }
@@ -279,10 +303,19 @@ class ReportService {
   prepareReportData(data) {
     const { report, fieldDetails, farmFields, farmStats, cropAnalysis, weatherData, aiAnalysis, aiRecommendations } = data;
     
-    // Calculate planting date range
+    // Calculate planting date range with simpler formatting
     const plantingDates = farmFields.filter(f => f.planting_date).map(f => f.planting_date);
-    const earliestPlanting = plantingDates.length > 0 ? Math.min(...plantingDates.map(d => new Date(d))) : null;
-    const latestPlanting = plantingDates.length > 0 ? Math.max(...plantingDates.map(d => new Date(d))) : null;
+    let earliestPlanting = null;
+    let latestPlanting = null;
+    
+    if (plantingDates.length > 0) {
+      const earliest = new Date(Math.min(...plantingDates.map(d => new Date(d))));
+      const latest = new Date(Math.max(...plantingDates.map(d => new Date(d))));
+      
+      // Format as simple "Apr 19" style
+      earliestPlanting = earliest.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      latestPlanting = latest.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
 
     // Get primary crops
     const cropCounts = {};
@@ -292,6 +325,16 @@ class ReportService {
       }
     });
     const primaryCrops = Object.keys(cropCounts).sort((a, b) => cropCounts[b] - cropCounts[a]).slice(0, 3).join(', ');
+
+    // Add visit conditions (conditions at time of field capture, not current time)
+    let visitConditions = null;
+    if (weatherData && weatherData.current) {
+      visitConditions = {
+        temperature: weatherData.current.current?.temperature || null,
+        humidity: weatherData.current.current?.humidity || null,
+        description: weatherData.current.current?.description || 'Conditions recorded'
+      };
+    }
 
     return {
       // Report metadata
@@ -313,25 +356,22 @@ class ReportService {
       recipientName: `${report.first_name} ${report.last_name}`,
       organization: report.organization,
 
-      // Statistics
-      farmStats: {
-        ...farmStats,
-        total_area: Math.round((farmStats.total_area || 0) * 10) / 10,
-        avg_field_size: Math.round((farmStats.avg_field_size || 0) * 10) / 10,
-        avg_expected_yield: farmStats.avg_expected_yield ? Math.round(farmStats.avg_expected_yield * 10) / 10 : null
-      },
-
-      // Crop analysis with formatted data
+      // Crop analysis with formatted data and simple date formatting
       cropAnalysis: cropAnalysis ? cropAnalysis.map(crop => ({
         ...crop,
         total_area: Math.round(crop.total_area * 10) / 10,
         avg_field_size: Math.round(crop.avg_field_size * 10) / 10,
         avg_expected_yield: crop.avg_expected_yield ? Math.round(crop.avg_expected_yield * 10) / 10 : null,
-        varieties: crop.varieties || 'Not specified'
+        varieties: crop.varieties || 'Not specified',
+        earliest_planting: earliestPlanting,
+        latest_planting: latestPlanting
       })) : null,
 
-      // Weather data
-      weather: weatherData,
+      // Weather data with visit conditions
+      weather: weatherData ? {
+        ...weatherData,
+        visitConditions: visitConditions
+      } : null,
 
       // Field details (the specific field that triggered the report)
       triggerField: {
@@ -341,12 +381,9 @@ class ReportService {
         expected_harvest_date: fieldDetails.expected_harvest_date ? moment(fieldDetails.expected_harvest_date).format('MMMM Do, YYYY') : null
       },
 
-      // Farm infrastructure details
-      farmDetails: fieldDetails,
-
-      // AI-generated content
-      aiAnalysis: aiAnalysis ? this.formatAIContent(aiAnalysis) : null,
-      aiRecommendations: aiRecommendations ? this.formatAIContent(aiRecommendations) : null
+      // Yieldera Engine generated content (instead of AI)
+      aiAnalysis: aiAnalysis ? this.formatYielderaContent(aiAnalysis) : null,
+      aiRecommendations: aiRecommendations ? this.formatYielderaContent(aiRecommendations) : null
     };
   }
 
@@ -361,8 +398,8 @@ class ReportService {
     return types[triggerType] || 'Agricultural Assessment Report';
   }
 
-  formatAIContent(content) {
-    // Convert AI response to HTML with basic formatting
+  formatYielderaContent(content) {
+    // Convert Yieldera Engine response to HTML with basic formatting
     return content
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
       .replace(/\*(.*?)\*/g, '<em>$1</em>')
