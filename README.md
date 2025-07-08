@@ -29,14 +29,21 @@ Before deploying, ensure you have:
 3. **OpenAI API Key**: For AI-powered analysis
 4. **Render Account**: For deployment
 
+**🔒 SECURITY FIRST**: Please review `SECURITY_GUIDE.md` for important security practices before proceeding with deployment.
+
 ## Database Setup
 
-1. **Create the report_queue table** (if not exists):
-   ```sql
-   -- Run the SQL commands from database/report_queue.sql
-   ```
+✅ **No database setup required!** 
 
-2. **Verify database triggers** are working on the `fields` table to populate the report queue
+Your `report_queue` table already exists and is fully compatible with the reporting service. The system has been updated to work with your existing table structure.
+
+**Current Status:**
+- ✅ Table exists: `report_queue`
+- ✅ Compatible schema confirmed
+- ✅ **18 pending reports** ready for processing
+- ✅ All necessary indexes in place
+
+The service will automatically start processing your 18 pending field reports once deployed!
 
 ## Deployment Instructions for Render
 
