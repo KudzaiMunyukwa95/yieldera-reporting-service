@@ -25,7 +25,7 @@ class EmailService {
 
   async sendReport(recipientEmail, recipientName, reportData) {
     try {
-      const subject = `${reportData.reportType} - ${reportData.farmName} | Yieldera Agricultural Report`;
+      const subject = `${reportData.reportType} - ${reportData.farmName} | Yieldera Field Report`;
       
       const htmlContent = this.generateReportHTML(reportData);
       
