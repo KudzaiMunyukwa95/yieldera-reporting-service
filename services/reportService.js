@@ -122,7 +122,7 @@ class ReportService {
         messages: [
           {
             role: "system",
-            content: "You are the Yieldera Engine, an expert agricultural consultant with deep knowledge in agronomy, crop science, and sustainable farming practices. Provide detailed, actionable insights based on field data and weather conditions. Focus on practical recommendations that add value to farmers, insurers, banks, and agricultural contractors. Never refer to yourself as AI - you are the Yieldera agricultural intelligence system."
+            content: "You are the Yieldera Agricultural Intelligence Engine. You are an expert agricultural consultant system with deep knowledge in agronomy, crop science, and sustainable farming practices. Provide detailed, crop-specific insights based on field data and weather conditions. Focus on practical recommendations that add value to farmers, insurers, banks, and agricultural contractors. Never refer to yourself as AI - you are the Yieldera Engine, an agricultural intelligence system. Keep your analysis focused on the specific crop mentioned. Avoid generic farming advice."
           },
           {
             role: "user",
@@ -149,7 +149,7 @@ class ReportService {
         messages: [
           {
             role: "system",
-            content: "You are the Yieldera Engine providing strategic recommendations for farm management. Consider the specific needs of different agricultural stakeholders including farmers (operational guidance), insurers (risk assessment), banks (financial viability), and contractors (service requirements). Provide specific, actionable recommendations with clear timelines where applicable. Never refer to yourself as AI - you are the Yieldera agricultural intelligence system."
+            content: "You are the Yieldera Agricultural Intelligence Engine providing strategic recommendations for farm management. Consider the specific needs of different agricultural stakeholders including farmers (operational guidance), insurers (risk assessment), banks (financial viability), and contractors (service requirements). Provide specific, actionable recommendations with clear timelines where applicable. Never refer to yourself as AI - you are the Yieldera Engine. Focus on crop-specific advice and avoid generic farming recommendations."
           },
           {
             role: "user",
@@ -303,7 +303,7 @@ class ReportService {
   prepareReportData(data) {
     const { report, fieldDetails, farmFields, farmStats, cropAnalysis, weatherData, aiAnalysis, aiRecommendations } = data;
     
-    // Calculate planting date range with simpler formatting
+    // Calculate planting date range with simple formatting
     const plantingDates = farmFields.filter(f => f.planting_date).map(f => f.planting_date);
     let earliestPlanting = null;
     let latestPlanting = null;
@@ -312,28 +312,9 @@ class ReportService {
       const earliest = new Date(Math.min(...plantingDates.map(d => new Date(d))));
       const latest = new Date(Math.max(...plantingDates.map(d => new Date(d))));
       
-      // Format as simple "Apr 19" style
+      // Format as simple "Apr 25" style
       earliestPlanting = earliest.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       latestPlanting = latest.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    }
-
-    // Get primary crops
-    const cropCounts = {};
-    farmFields.forEach(field => {
-      if (field.crop_type) {
-        cropCounts[field.crop_type] = (cropCounts[field.crop_type] || 0) + 1;
-      }
-    });
-    const primaryCrops = Object.keys(cropCounts).sort((a, b) => cropCounts[b] - cropCounts[a]).slice(0, 3).join(', ');
-
-    // Add visit conditions (conditions at time of field capture, not current time)
-    let visitConditions = null;
-    if (weatherData && weatherData.current) {
-      visitConditions = {
-        temperature: weatherData.current.current?.temperature || null,
-        humidity: weatherData.current.current?.humidity || null,
-        description: weatherData.current.current?.description || 'Conditions recorded'
-      };
     }
 
     return {
@@ -349,29 +330,21 @@ class ReportService {
       farmerName: fieldDetails.farmer_name,
       totalFields: farmFields.length,
       totalArea: Math.round(farmFields.reduce((sum, f) => sum + (parseFloat(f.field_size) || 0), 0) * 10) / 10,
-      primaryCrops: primaryCrops || 'Mixed crops',
       
       // User information
-      userType: this.email.formatUserType(report.user_type),
       recipientName: `${report.first_name} ${report.last_name}`,
-      organization: report.organization,
 
-      // Crop analysis with formatted data and simple date formatting
+      // Crop analysis with simple date formatting
       cropAnalysis: cropAnalysis ? cropAnalysis.map(crop => ({
         ...crop,
         total_area: Math.round(crop.total_area * 10) / 10,
-        avg_field_size: Math.round(crop.avg_field_size * 10) / 10,
-        avg_expected_yield: crop.avg_expected_yield ? Math.round(crop.avg_expected_yield * 10) / 10 : null,
         varieties: crop.varieties || 'Not specified',
         earliest_planting: earliestPlanting,
         latest_planting: latestPlanting
       })) : null,
 
-      // Weather data with visit conditions
-      weather: weatherData ? {
-        ...weatherData,
-        visitConditions: visitConditions
-      } : null,
+      // Weather data
+      weather: weatherData,
 
       // Field details (the specific field that triggered the report)
       triggerField: {
@@ -381,7 +354,7 @@ class ReportService {
         expected_harvest_date: fieldDetails.expected_harvest_date ? moment(fieldDetails.expected_harvest_date).format('MMMM Do, YYYY') : null
       },
 
-      // Yieldera Engine generated content (instead of AI)
+      // Yieldera Engine generated content
       aiAnalysis: aiAnalysis ? this.formatYielderaContent(aiAnalysis) : null,
       aiRecommendations: aiRecommendations ? this.formatYielderaContent(aiRecommendations) : null
     };
