@@ -137,7 +137,7 @@ class DatabaseService {
     try {
       await this.pool.execute(`
         UPDATE report_queue 
-        SET status = 'error', error_message = ?, processed_at = NOW()
+        SET status = 'failed', error_message = ?, processed_at = NOW()
         WHERE id = ?
       `, [errorMessage, reportId]);
     } catch (error) {
