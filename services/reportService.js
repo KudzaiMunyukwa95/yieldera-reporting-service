@@ -270,10 +270,7 @@ class ReportService {
       'new_field': 'New field registration and initial assessment',
       'field_update': 'Field data update or modification',
       'growth_stage_change': 'Crop growth stage progression',
-      'loss_event': 'Loss or damage reported',
-      'weather_alert': 'Weather-related risk detected',
-      'pest_disease': 'Pest or disease occurrence',
-      'scheduled': 'Scheduled periodic assessment'
+      'loss_event': 'Loss or damage reported'
     };
     
     return descriptions[triggerType] || triggerType;
@@ -358,10 +355,7 @@ class ReportService {
       'new_field': 'Field Registration Report',
       'field_update': 'Field Assessment Update',
       'growth_stage_change': 'Crop Development Report',
-      'loss_event': 'Loss Assessment Report',
-      'weather_alert': 'Weather Impact Report',
-      'pest_disease': 'Pest & Disease Report',
-      'scheduled': 'Periodic Farm Report'
+      'loss_event': 'Loss Assessment Report'
     };
     
     return types[triggerType] || 'Agricultural Assessment Report';
