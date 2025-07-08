@@ -71,12 +71,12 @@ async function initializeServices() {
     // Process any pending reports on startup
     await processReports();
     
-    // Set up cron job to process reports every 2 minutes
-    const job = new cron.CronJob('*/2 * * * *', async () => {
+    // Set up cron job to process reports every 1 minute
+    const job = new cron.CronJob('*/1 * * * *', async () => {
       await processReports();
     });
     job.start();
-    console.log('✅ Report processing cron job started (every 2 minutes)');
+    console.log('✅ Report processing cron job started (every 1 minute)');
     
   } catch (error) {
     console.error('❌ Failed to initialize services:', error);
