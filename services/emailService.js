@@ -25,7 +25,7 @@ class EmailService {
 
   async sendReport(recipientEmail, recipientName, reportData) {
     try {
-      const subject = `${reportData.reportType} - ${reportData.farmName} | Yieldera Field Report`;
+      const subject = `Field Visit Report - ${reportData.farmName}`;
       
       const htmlContent = this.generateReportHTML(reportData);
       
@@ -144,29 +144,35 @@ class EmailService {
             color: #012E37;
             font-size: 0.95em;
         }
-        .weather-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-            gap: 12px;
+        .weather-table {
+            width: 100%;
+            border-collapse: collapse;
             margin: 15px 0;
-        }
-        .weather-item {
-            background: rgba(1, 46, 55, 0.05);
-            padding: 15px;
+            background: white;
             border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .weather-table th,
+        .weather-table td {
+            padding: 10px;
             text-align: center;
-            border: 1px solid rgba(1, 46, 55, 0.1);
+            border-bottom: 1px solid #e9ecef;
         }
-        .weather-value {
-            font-size: 1.3em;
-            font-weight: bold;
-            color: #012E37;
-            display: block;
+        .weather-table th {
+            background: #012E37;
+            color: #B6BF00;
+            font-weight: 600;
+            font-size: 0.9em;
         }
-        .weather-label {
-            color: #666;
-            font-size: 0.8em;
-            margin-top: 4px;
+        .weather-table td {
+            font-size: 0.85em;
+        }
+        .weather-table tr:last-child td {
+            border-bottom: none;
+        }
+        .weather-table tr:nth-child(even) {
+            background: #f8f9fa;
         }
         .crop-section {
             background: rgba(182, 191, 0, 0.1);
@@ -256,13 +262,14 @@ class EmailService {
         }
         .footer {
             background: #012E37;
-            color: white;
+            color: #B6BF00;
             text-align: center;
             padding: 20px;
         }
         .footer p {
             margin: 5px 0;
-            opacity: 0.9;
+            opacity: 1;
+            color: #B6BF00;
         }
         .logo-text {
             font-weight: bold;
@@ -279,7 +286,7 @@ class EmailService {
     <div class="email-container">
         <!-- Header -->
         <div class="header">
-            <h1>🌾 Yieldera Field Report</h1>
+            <h1>Yieldera Field Report</h1>
             <p>{{reportType}} | {{farmName}} | {{generatedDate}}</p>
         </div>
 
@@ -302,40 +309,61 @@ class EmailService {
         <!-- Field Conditions at Time of Visit -->
         {{#if weather}}
         <div class="section">
-            <h3>🌤️ Field Conditions During Visit</h3>
-            <p style="margin-bottom: 15px;">Weather conditions when field data was captured:</p>
-            <div class="weather-grid">
-                {{#if weather.current.current.temperature}}
-                <div class="weather-item">
-                    <span class="weather-value">{{weather.current.current.temperature}}°C</span>
-                    <div class="weather-label">Temperature</div>
-                </div>
-                {{/if}}
-                {{#if weather.current.current.humidity}}
-                <div class="weather-item">
-                    <span class="weather-value">{{weather.current.current.humidity}}%</span>
-                    <div class="weather-label">Humidity</div>
-                </div>
-                {{/if}}
-                {{#if weather.analysis.last7Days.totalRainfall}}
-                <div class="weather-item">
-                    <span class="weather-value">{{weather.analysis.last7Days.totalRainfall}}mm</span>
-                    <div class="weather-label">Recent 7 Days</div>
-                </div>
-                {{/if}}
-                {{#if weather.analysis.last7Days.lowestTemp}}
-                <div class="weather-item">
-                    <span class="weather-value">{{weather.analysis.last7Days.lowestTemp}}°C</span>
-                    <div class="weather-label">Min Temp (7d)</div>
-                </div>
-                {{/if}}
-                {{#if weather.analysis.last7Days.highestTemp}}
-                <div class="weather-item">
-                    <span class="weather-value">{{weather.analysis.last7Days.highestTemp}}°C</span>
-                    <div class="weather-label">Max Temp (7d)</div>
-                </div>
-                {{/if}}
-            </div>
+            <h3>🌤️ Weather Analysis</h3>
+            
+            {{#if weather.historical}}
+            <h4 style="color: #012E37; margin: 20px 0 10px 0;">Past 7 Days Weather</h4>
+            <table class="weather-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Max Temp (°C)</th>
+                        <th>Min Temp (°C)</th>
+                        <th>Rainfall (mm)</th>
+                        <th>Conditions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{#each weather.historical}}
+                    <tr>
+                        <td>{{date}}</td>
+                        <td>{{tempMax}}</td>
+                        <td>{{tempMin}}</td>
+                        <td>{{precipitation}}</td>
+                        <td>{{description}}</td>
+                    </tr>
+                    {{/each}}
+                </tbody>
+            </table>
+            {{/if}}
+
+            {{#if weather.current.forecast}}
+            <h4 style="color: #012E37; margin: 20px 0 10px 0;">Next 7 Days Forecast</h4>
+            <table class="weather-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Max Temp (°C)</th>
+                        <th>Min Temp (°C)</th>
+                        <th>Rainfall (mm)</th>
+                        <th>Wind (km/h)</th>
+                        <th>Conditions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{#each weather.current.forecast}}
+                    <tr>
+                        <td>{{date}}</td>
+                        <td>{{tempMax}}</td>
+                        <td>{{tempMin}}</td>
+                        <td>{{precipitation}}</td>
+                        <td>{{windSpeed}}</td>
+                        <td>{{description}}</td>
+                    </tr>
+                    {{/each}}
+                </tbody>
+            </table>
+            {{/if}}
 
             {{#if weather.agronomicInsights.insights}}
             {{#each weather.agronomicInsights.insights}}
@@ -423,7 +451,7 @@ class EmailService {
 
             {{#if aiAnalysis}}
             <div class="analysis-section">
-                <h4>🔬 Yieldera Engine Analysis</h4>
+                <h4>Yieldera Field Analysis</h4>
                 {{{aiAnalysis}}}
             </div>
             {{/if}}
@@ -446,7 +474,7 @@ class EmailService {
         <div class="section">
             <h3>🎯 Strategic Recommendations</h3>
             <div class="analysis-section">
-                <h4>Yieldera Engine Recommendations</h4>
+                <h4>Yieldera Field Recommendations</h4>
                 {{{aiRecommendations}}}
             </div>
         </div>
@@ -461,8 +489,8 @@ class EmailService {
 
         <!-- Footer -->
         <div class="footer">
-            <p>🌾 <span class="logo-text">Yieldera</span> - Empowering Agriculture Through Data</p>
-            <p style="font-size: 0.8em; opacity: 0.8;">Support: reports@yieldera.co.zw</p>
+            <p><span class="logo-text">Yieldera</span> - Empowering Agriculture Through Data</p>
+            <p style="font-size: 0.8em;">Support: reports@yieldera.co.zw</p>
         </div>
     </div>
 </body>
