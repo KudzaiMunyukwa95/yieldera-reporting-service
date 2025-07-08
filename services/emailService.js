@@ -420,6 +420,18 @@ class EmailService {
                     <div class="detail-label">Field Size</div>
                     <div class="detail-value">{{triggerField.field_size}} hectares</div>
                 </div>
+                {{#if triggerField.latitude}}
+                <div class="detail-item">
+                    <div class="detail-label">GPS Coordinates</div>
+                    <div class="detail-value">{{triggerField.latitude}}, {{triggerField.longitude}}</div>
+                </div>
+                {{/if}}
+                {{#if triggerField.accuracy}}
+                <div class="detail-item">
+                    <div class="detail-label">GPS Accuracy</div>
+                    <div class="detail-value">{{triggerField.accuracy}}m</div>
+                </div>
+                {{/if}}
                 {{#if triggerField.soil_type}}
                 <div class="detail-item">
                     <div class="detail-label">Soil Type</div>
