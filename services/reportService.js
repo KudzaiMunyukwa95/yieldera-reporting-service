@@ -122,21 +122,21 @@ class ReportService {
         messages: [
           {
             role: "system",
-            content: "You are the Yieldera Agricultural Intelligence Engine. You are an expert agricultural consultant system with deep knowledge in agronomy, crop science, and sustainable farming practices. Provide detailed, crop-specific insights based on field data and weather conditions. Focus on practical recommendations that add value to farmers, insurers, banks, and agricultural contractors. Never refer to yourself as AI - you are the Yieldera Engine, an agricultural intelligence system. Keep your analysis focused on the specific crop mentioned. Avoid generic farming advice."
+            content: "You are the Yieldera Agricultural Intelligence Engine, a specialized system for Zimbabwe and Southern African agriculture. You have deep expertise in crop-specific agronomy, irrigation management, and local farming conditions. Key principles: 1) If a field has irrigation (Center Pivot, Drip, Sprinkler, etc.), DO NOT focus on rainfall - focus on irrigation efficiency and timing. 2) Winter wheat and barley in Zimbabwe are typically irrigated crops. 3) Provide crop-specific analysis, not generic farming advice. 4) Consider local pest pressures, climate patterns, and market conditions. 5) Be practical and actionable in your recommendations. Never refer to yourself as AI - you are the Yieldera Engine."
           },
           {
             role: "user",
             content: prompt
           }
         ],
-        max_tokens: 1000,
-        temperature: 0.7
+        max_tokens: 1200,
+        temperature: 0.6
       });
 
       return response.choices[0].message.content;
     } catch (error) {
       console.error('❌ Error generating Yieldera Engine analysis:', error);
-      return `Yieldera Engine analysis temporarily unavailable. Field assessment shows ${fieldDetails.crop_type} crop${fieldDetails.current_growth_stage ? ` in ${fieldDetails.current_growth_stage} stage` : ''} on ${fieldDetails.field_size} hectares.`;
+      return `Yieldera Engine analysis temporarily unavailable. Field assessment shows ${fieldDetails.crop_type} crop${fieldDetails.current_growth_stage ? ` in ${fieldDetails.current_growth_stage} stage` : ''} on ${fieldDetails.field_size} hectares with ${fieldDetails.irrigation_method_enhanced || 'irrigation method not specified'}.`;
     }
   }
 
@@ -149,7 +149,7 @@ class ReportService {
         messages: [
           {
             role: "system",
-            content: "You are the Yieldera Agricultural Intelligence Engine providing strategic recommendations for farm management. Consider the specific needs of different agricultural stakeholders including farmers (operational guidance), insurers (risk assessment), banks (financial viability), and contractors (service requirements). Provide specific, actionable recommendations with clear timelines where applicable. Never refer to yourself as AI - you are the Yieldera Engine. Focus on crop-specific advice and avoid generic farming recommendations."
+            content: "You are the Yieldera Agricultural Intelligence Engine providing strategic recommendations for Zimbabwe and Southern African agriculture. Key principles: 1) If a field has irrigation infrastructure, focus on irrigation optimization, NOT rainfall concerns. 2) Be highly crop-specific - wheat recommendations are different from barley recommendations. 3) Consider Zimbabwe's climate, seasons, and farming practices. 4) Provide practical, implementable actions with timelines. 5) Focus on yield optimization and risk mitigation specific to the crop and irrigation method. 6) Avoid generic farming advice. Never refer to yourself as AI - you are the Yieldera Engine."
           },
           {
             role: "user",
@@ -163,7 +163,7 @@ class ReportService {
       return response.choices[0].message.content;
     } catch (error) {
       console.error('❌ Error generating Yieldera Engine recommendations:', error);
-      return "Yieldera Engine recommendations temporarily unavailable. Please monitor crop development and weather conditions closely, and consider consultation with local agricultural extension services.";
+      return `Yieldera Engine recommendations temporarily unavailable. Consider consulting with local agricultural extension services for ${fieldDetails.crop_type} management guidance specific to ${fieldDetails.irrigation_method_enhanced || 'your irrigation system'}.`;
     }
   }
 
@@ -172,10 +172,11 @@ class ReportService {
     
     prompt += `**FIELD INFORMATION:**\n`;
     prompt += `- Field: ${field.field_name}\n`;
-    prompt += `- Crop: ${field.crop_type}${field.variety ? ` (${field.variety})` : ''}\n`;
+    prompt += `- Crop: ${field.crop_type}${field.variety ? ` (${field.variety} variety)` : ''}\n`;
     prompt += `- Size: ${field.field_size} hectares\n`;
     prompt += `- Soil Type: ${field.soil_type || 'Not specified'}\n`;
     prompt += `- Planting Date: ${field.planting_date || 'Not specified'}\n`;
+    prompt += `- Location: Zimbabwe (Southern Africa)\n`;
     
     // Handle missing growth stage specifically
     if (field.current_growth_stage) {
@@ -184,7 +185,32 @@ class ReportService {
       prompt += `- Growth Stage: Not captured during field visit (data collection gap)\n`;
     }
     
-    prompt += `- Irrigation: ${field.irrigation_method_enhanced || 'Not specified'}\n`;
+    // Irrigation analysis - key logic fix
+    const irrigation = field.irrigation_method_enhanced || 'Not specified';
+    prompt += `- Irrigation: ${irrigation}\n`;
+    
+    // Determine irrigation context
+    let irrigationContext = '';
+    if (irrigation === 'Rainfed') {
+      irrigationContext = 'This is a rainfed field dependent on natural rainfall.';
+    } else if (['Center Pivot', 'Drip', 'Sprinkler', 'Flood', 'Furrow'].includes(irrigation)) {
+      irrigationContext = `This field has ${irrigation} irrigation infrastructure, making it largely independent of rainfall patterns.`;
+    }
+    
+    // Zimbabwe seasonal context
+    let seasonalContext = '';
+    if (field.planting_date) {
+      const plantingMonth = new Date(field.planting_date).getMonth();
+      if ([3, 4, 5, 6].includes(plantingMonth)) { // April-July
+        seasonalContext = 'This is a winter crop in Zimbabwe, typically requiring irrigation during the dry season.';
+      } else if ([9, 10, 11, 0].includes(plantingMonth)) { // Oct-Jan
+        seasonalContext = 'This is a summer crop in Zimbabwe, planted at the start of the rainy season.';
+      }
+    }
+    
+    if (irrigationContext || seasonalContext) {
+      prompt += `- Context: ${irrigationContext} ${seasonalContext}\n`;
+    }
     
     if (field.basal_fertilizer === 'Yes') {
       prompt += `- Basal Fertilizer: ${field.basal_fertilizer_type || 'Applied'} at ${field.basal_fertilizer_rate || 'standard rate'}\n`;
@@ -207,34 +233,66 @@ class ReportService {
       prompt += `- Risk Factors: ${riskFactors.join(', ')}\n`;
     }
 
-    // Weather context
+    // Weather context - adjust based on irrigation
     if (weather && weather.analysis && weather.analysis.last7Days) {
-      prompt += `\n**RECENT WEATHER CONDITIONS:**\n`;
+      prompt += `\n**WEATHER CONDITIONS:**\n`;
       prompt += `- 7-day rainfall: ${weather.analysis.last7Days.totalRainfall || 0}mm\n`;
       prompt += `- Temperature range: ${weather.analysis.last7Days.lowestTemp || 'N/A'}°C to ${weather.analysis.last7Days.highestTemp || 'N/A'}°C\n`;
-      prompt += `- Weather trend: ${weather.current?.current?.description || 'Variable conditions'}\n`;
+      
+      // Important: Adjust rainfall significance based on irrigation
+      if (irrigation === 'Rainfed') {
+        prompt += `- Rainfall significance: Critical - this rainfed field depends entirely on natural precipitation\n`;
+      } else if (['Center Pivot', 'Drip', 'Sprinkler', 'Flood', 'Furrow'].includes(irrigation)) {
+        prompt += `- Rainfall significance: Supplementary - field has irrigation infrastructure to manage water needs\n`;
+      }
     }
 
     prompt += `\n**ASSESSMENT TRIGGER:** This assessment was triggered by: ${this.getTriggerDescription(triggerType)}\n`;
 
     prompt += `\n**ANALYSIS REQUEST:**\n`;
-    prompt += `Please provide a focused agronomic analysis for ${field.crop_type} specifically, considering:\n`;
-    prompt += `1. Current ${field.crop_type} development status based on planting date and conditions\n`;
+    prompt += `Please provide a focused agronomic analysis for ${field.crop_type} specifically in Zimbabwe, considering:\n`;
+    
+    // Crop-specific analysis points
+    if (field.crop_type === 'Wheat') {
+      prompt += `1. Current wheat development status - considering this is likely winter wheat in Zimbabwe\n`;
+      prompt += `2. Wheat-specific risk assessment based on irrigation status and Zimbabwe climate\n`;
+      prompt += `3. Critical wheat yield factors including tillering, protein content, and disease pressure\n`;
+      prompt += `4. Wheat variety-specific considerations${field.variety ? ` for ${field.variety}` : ''}\n`;
+      if (irrigation !== 'Rainfed') {
+        prompt += `5. Irrigation management recommendations specific to wheat production\n`;
+      } else {
+        prompt += `5. Risk assessment for rainfed wheat production in Zimbabwe\n`;
+      }
+    } else if (field.crop_type === 'Barley') {
+      prompt += `1. Current barley development status - considering this is likely winter barley in Zimbabwe\n`;
+      prompt += `2. Barley-specific risk assessment including malting quality considerations\n`;
+      prompt += `3. Critical barley yield factors including head formation and grain quality\n`;
+      prompt += `4. Barley variety-specific considerations${field.variety ? ` for ${field.variety}` : ''}\n`;
+      if (irrigation !== 'Rainfed') {
+        prompt += `5. Irrigation management for optimal barley quality and yield\n`;
+      } else {
+        prompt += `5. Risk assessment for rainfed barley production\n`;
+      }
+    } else {
+      prompt += `1. Current ${field.crop_type} development status in Zimbabwe context\n`;
+      prompt += `2. ${field.crop_type}-specific risk assessment\n`;
+      prompt += `3. Critical ${field.crop_type} yield factors\n`;
+      prompt += `4. Variety-specific considerations${field.variety ? ` for ${field.variety}` : ''}\n`;
+      prompt += `5. Water management recommendations\n`;
+    }
     
     // Handle missing growth stage in prompt
     if (!field.current_growth_stage) {
-      prompt += `2. Note that growth stage was not captured during field visit - this is a data collection gap that should be addressed\n`;
-      prompt += `3. Risk assessment for ${field.crop_type} based on field conditions and weather patterns\n`;
-      prompt += `4. Critical ${field.crop_type}-specific factors affecting yield potential\n`;
-      prompt += `5. Immediate recommendations specific to ${field.crop_type} management\n\n`;
-    } else {
-      prompt += `2. Risk assessment for ${field.crop_type} based on current ${field.current_growth_stage} stage and weather\n`;
-      prompt += `3. Critical ${field.crop_type}-specific factors affecting yield potential at ${field.current_growth_stage} stage\n`;
-      prompt += `4. Stage-specific recommendations for ${field.crop_type} management\n\n`;
+      prompt += `\nIMPORTANT: Growth stage was not captured during field visit - mention this as a data collection gap that affects precision of recommendations.\n`;
     }
     
-    prompt += `Keep your analysis focused on ${field.crop_type} crop specifics. Avoid generic farming advice.`;
-    prompt += `Format your response in clear, professional language suitable for agricultural stakeholders.`;
+    // Irrigation-specific instructions
+    if (irrigation !== 'Rainfed') {
+      prompt += `\nDO NOT focus on rainfall concerns - this field has ${irrigation} irrigation. Focus on irrigation efficiency, timing, and crop water requirements instead.\n`;
+    }
+    
+    prompt += `\nKeep your analysis focused on ${field.crop_type} crop specifics in Zimbabwe. `;
+    prompt += `Avoid generic farming advice. Provide actionable, location-specific insights.`;
 
     return prompt;
   }
@@ -242,13 +300,15 @@ class ReportService {
   buildRecommendationsPrompt(field, farmFields, weather, cropAnalysis) {
     let prompt = `Generate strategic agricultural recommendations based on this farm assessment:\n\n`;
     
-    prompt += `**FARM OVERVIEW:**\n`;
+    prompt += `**FARM CONTEXT:**\n`;
+    prompt += `- Location: Zimbabwe (Southern Africa)\n`;
     prompt += `- Total Fields: ${farmFields.length}\n`;
     prompt += `- Total Area: ${farmFields.reduce((sum, f) => sum + (parseFloat(f.field_size) || 0), 0)} hectares\n`;
     prompt += `- Crops: ${[...new Set(farmFields.map(f => f.crop_type).filter(Boolean))].join(', ')}\n`;
     
     prompt += `\n**FOCUS FIELD:**\n`;
-    prompt += `- ${field.field_name}: ${field.crop_type} (${field.field_size} ha)\n`;
+    prompt += `- ${field.field_name}: ${field.crop_type}${field.variety ? ` (${field.variety} variety)` : ''} (${field.field_size} ha)\n`;
+    prompt += `- Irrigation: ${field.irrigation_method_enhanced || 'Not specified'}\n`;
     
     // Handle missing growth stage
     if (field.current_growth_stage) {
@@ -256,8 +316,16 @@ class ReportService {
     } else {
       prompt += `- Current stage: Not captured during field visit\n`;
     }
+
+    // Irrigation context for recommendations
+    const irrigation = field.irrigation_method_enhanced || 'Not specified';
+    if (irrigation !== 'Rainfed') {
+      prompt += `- Water management: Field has ${irrigation} irrigation infrastructure\n`;
+    } else {
+      prompt += `- Water management: Rainfed field dependent on natural precipitation\n`;
+    }
     
-    // Weather insights
+    // Weather insights - adjust based on irrigation
     if (weather && weather.agronomicInsights && weather.agronomicInsights.insights.length > 0) {
       prompt += `\n**WEATHER INSIGHTS:**\n`;
       weather.agronomicInsights.insights.forEach(insight => {
@@ -277,15 +345,56 @@ class ReportService {
     }
 
     prompt += `\n**RECOMMENDATION REQUEST:**\n`;
-    prompt += `Provide specific, actionable recommendations that apply to all agricultural stakeholders (farmers, insurers, banks, contractors):\n`;
-    prompt += `1. **IMMEDIATE ACTIONS:** What needs to be done in the next 1-7 days\n`;
-    prompt += `2. **SHORT-TERM MANAGEMENT:** Actions needed in the next 2-4 weeks\n`;
-    prompt += `3. **RISK MITIGATION:** Key risks and how to address them\n`;
-    prompt += `4. **YIELD OPTIMIZATION:** Steps to maximize yield potential\n`;
-    prompt += `5. **MONITORING REQUIREMENTS:** What to watch for going forward\n\n`;
-    prompt += `Include specific timelines where applicable and prioritize recommendations by urgency. `;
-    prompt += `Focus on crop-specific advice for ${field.crop_type}. Avoid generic farming advice. `;
-    prompt += `Make recommendations actionable for all stakeholders without separating by stakeholder type.`;
+    prompt += `Provide specific, actionable recommendations for ${field.crop_type} production in Zimbabwe:\n`;
+    
+    // Crop-specific recommendation structure
+    if (field.crop_type === 'Wheat') {
+      prompt += `1. **WHEAT MANAGEMENT:** Immediate wheat-specific actions for current conditions\n`;
+      prompt += `2. **YIELD OPTIMIZATION:** Wheat tillering, head formation, and grain filling strategies\n`;
+      prompt += `3. **QUALITY FACTORS:** Protein content, test weight, and market grade considerations\n`;
+      prompt += `4. **DISEASE MANAGEMENT:** Wheat rust, blight, and other disease prevention\n`;
+      if (irrigation !== 'Rainfed') {
+        prompt += `5. **IRRIGATION SCHEDULING:** Optimal water timing for wheat growth stages\n`;
+      } else {
+        prompt += `5. **RISK MITIGATION:** Drought tolerance and water conservation strategies\n`;
+      }
+    } else if (field.crop_type === 'Barley') {
+      prompt += `1. **BARLEY MANAGEMENT:** Immediate barley-specific actions for current conditions\n`;
+      prompt += `2. **MALTING QUALITY:** Grain uniformity, protein levels, and brewing industry requirements\n`;
+      prompt += `3. **HEAD DEVELOPMENT:** Barley spike formation and grain filling optimization\n`;
+      prompt += `4. **PEST CONTROL:** Barley-specific pest and disease management\n`;
+      if (irrigation !== 'Rainfed') {
+        prompt += `5. **WATER MANAGEMENT:** Irrigation timing for optimal barley quality\n`;
+      } else {
+        prompt += `5. **DROUGHT STRATEGIES:** Water stress management for barley\n`;
+      }
+    } else {
+      prompt += `1. **IMMEDIATE ACTIONS:** What needs to be done in the next 1-7 days\n`;
+      prompt += `2. **CROP OPTIMIZATION:** ${field.crop_type}-specific yield enhancement strategies\n`;
+      prompt += `3. **RISK MANAGEMENT:** Key risks and prevention measures\n`;
+      prompt += `4. **QUALITY ASSURANCE:** Maintaining crop quality standards\n`;
+      prompt += `5. **RESOURCE MANAGEMENT:** Efficient use of inputs and infrastructure\n`;
+    }
+    
+    prompt += `\n**CONTEXT REQUIREMENTS:**\n`;
+    
+    // Irrigation-specific instructions
+    if (irrigation !== 'Rainfed') {
+      prompt += `- This field has ${irrigation} irrigation - DO NOT recommend relying on rainfall\n`;
+      prompt += `- Focus on irrigation efficiency, timing, and water use optimization\n`;
+      prompt += `- Consider fertigation opportunities and irrigation-specific pest management\n`;
+    } else {
+      prompt += `- This is a rainfed field - focus on water conservation and drought mitigation\n`;
+      prompt += `- Consider supplemental irrigation options if available\n`;
+    }
+    
+    prompt += `- Location is Zimbabwe - consider local climate, pest pressures, and market conditions\n`;
+    prompt += `- Focus on practical, implementable actions with specific timelines\n`;
+    prompt += `- Prioritize recommendations by urgency and impact\n`;
+    prompt += `- Make recommendations specific to ${field.crop_type} production\n`;
+    prompt += `- Avoid generic farming advice - be crop and location-specific\n\n`;
+    
+    prompt += `Provide actionable recommendations that agricultural stakeholders (farmers, insurers, banks, contractors) can implement immediately.`;
 
     return prompt;
   }
