@@ -171,16 +171,16 @@ class WeatherService {
         insights.push({
           type: 'warning',
           category: 'temperature',
-          message: `High temperature stress detected - maximum temperature reached ${analysis.last7Days.highestTemp}°C. Ensure adequate irrigation and consider heat stress mitigation.`
+          message: `High temperature stress detected - maximum temperature reached ${analysis.last7Days.highestTemp}°C. Monitor crop stress and consider heat mitigation measures.`
         });
       }
 
-      // Rainfall insights
+      // Rainfall insights - these will be context-specific based on irrigation in the report
       if (analysis.last7Days.totalRainfall < 5) {
         insights.push({
-          type: 'alert',
+          type: 'info',
           category: 'water',
-          message: `Low rainfall period detected (${analysis.last7Days.totalRainfall}mm in 7 days). Monitor soil moisture and consider supplemental irrigation.`
+          message: `Low rainfall period (${analysis.last7Days.totalRainfall}mm in 7 days). For rainfed fields, monitor soil moisture closely.`
         });
       }
 
@@ -188,16 +188,16 @@ class WeatherService {
         insights.push({
           type: 'warning',
           category: 'water',
-          message: `Excessive rainfall detected (${analysis.last7Days.totalRainfall}mm in 7 days). Monitor for waterlogging and disease pressure.`
+          message: `Excessive rainfall detected (${analysis.last7Days.totalRainfall}mm in 7 days). Monitor for waterlogging and increased disease pressure.`
         });
       }
 
       // Growing conditions
-      if (analysis.last7Days.avgMaxTemp >= 20 && analysis.last7Days.avgMaxTemp <= 30 && analysis.last7Days.totalRainfall >= 10) {
+      if (analysis.last7Days.avgMaxTemp >= 15 && analysis.last7Days.avgMaxTemp <= 28) {
         insights.push({
           type: 'positive',
           category: 'growth',
-          message: 'Favorable growing conditions detected with adequate temperature and moisture levels.'
+          message: 'Favorable temperature conditions for crop development and growth.'
         });
       }
 
@@ -214,14 +214,18 @@ class WeatherService {
   generateWeatherRecommendations(analysis, current) {
     const recommendations = [];
 
-    // Irrigation recommendations
-    if (analysis.last7Days.totalRainfall < 10) {
-      recommendations.push('Consider increasing irrigation frequency due to low recent rainfall');
+    // Temperature-based recommendations
+    if (analysis.last7Days.lowestTemp < 5) {
+      recommendations.push('Implement frost protection measures for sensitive crops');
     }
 
-    // Disease management
+    if (analysis.last7Days.avgMaxTemp > 32) {
+      recommendations.push('Monitor crops for heat stress and consider cooling strategies');
+    }
+
+    // Disease management based on conditions
     if (analysis.last7Days.totalRainfall > 50 && current.current.humidity > 80) {
-      recommendations.push('High humidity and rainfall increase disease risk - monitor crops closely and consider preventive fungicide applications');
+      recommendations.push('High humidity and rainfall increase disease risk - monitor crops closely and consider preventive treatments');
     }
 
     // Pest management
@@ -229,13 +233,18 @@ class WeatherService {
       recommendations.push('Warm, dry conditions may increase pest activity - monitor for insect infestations');
     }
 
-    // Planting recommendations
+    // Water management (context-neutral)
+    if (analysis.last7Days.totalRainfall < 10) {
+      recommendations.push('Monitor soil moisture levels and ensure adequate water supply for crops');
+    }
+
+    // Planting window assessment
     if (current.forecast && current.forecast.length > 0) {
       const upcoming3Days = current.forecast.slice(0, 3);
       const upcomingRain = upcoming3Days.reduce((sum, day) => sum + (day.precipitation || 0), 0);
       
       if (upcomingRain > 20) {
-        recommendations.push('Good planting window ahead with expected rainfall in the next 3 days');
+        recommendations.push('Favorable conditions ahead with expected precipitation in the next 3 days');
       }
     }
 
